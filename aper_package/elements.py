@@ -21,12 +21,12 @@ class Elements():
         
     def plot(self, fig, row=1, column=1):
 
-        for n, j in enumerate(objects):
+        for n, j in enumerate(self.objects):
             
-            ob_s = self.s[np.where(keyword==j)[0]]
-            ob_l = self.l[np.where(keyword==j)[0]]
-            ob_name = self.name[np.where(keyword==j)[0]]
-            ob_k1l = np.sign(k1l[np.where(keyword=="QUADRUPOLE")[0]]).astype(int)
+            ob_s = self.s[np.where(self.keyword==j)[0]]
+            ob_l = self.l[np.where(self.keyword==j)[0]]
+            ob_name = self.name[np.where(self.keyword==j)[0]]
+            ob_k1l = np.sign(self.k1l[np.where(self.keyword=="QUADRUPOLE")[0]]).astype(int)
             
             for i in range(len(ob_s)):
 
@@ -35,12 +35,12 @@ class Elements():
                 
                 if j=='QUADRUPOLE':
                     y0=0
-                    y1=qp_k1l[i]
+                    y1=ob_k1l[i]
                     
                 else:
                     y0=-0.5
                     y1=0.5
 
-        fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], fill="toself", mode='lines',
-                             fillcolor=colors[n], line=dict(color=colors[n]), name=ob_name[i]), row=row, col=column)      
+                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], fill="toself", mode='lines',
+                             fillcolor=self.colors[n], line=dict(color=self.colors[n]), name=ob_name[i]), row=row, col=column)      
         
