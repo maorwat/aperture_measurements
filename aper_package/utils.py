@@ -30,9 +30,10 @@ def shift_and_redefine(df, delta_s):
 
     # Calculate the shift required to make the minimum s value zero
     df['S'] = df['S'] - delta_s
-    last_value = df['S'].iloc[-1] - df['S'].iloc[0]
+    #last_value = df['S'].iloc[-1] - df['S'].iloc[0]
+    last_value = 26658.88318 - delta_s - df['S'].iloc[0]
 
-    # Find index of first positive value in any column
+    # Find index of first positive value in 'S'
     first_positive_index = df[df['S'] > 0].index.min()
 
     # Roll all columns by the same amount
@@ -45,3 +46,8 @@ def shift_and_redefine(df, delta_s):
     # Check if the last value of 'S' is zero and add last_value if it is
     if df['S'].iloc[-1] == 0:
         df['S'].iloc[-1] += last_value
+
+    df = df.sort_values(by='S')
+    df = df.reset_index(drop=True)
+
+    return df
