@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from aper_package.utils import match_indices
+from aper_package.utils import shift_and_redefine
 
 class AperPlot:
     
@@ -40,9 +41,9 @@ class AperPlot:
 
         # Filtering the DataFrame to only have the IP locations
         self.ip_df_b1 = df_b1[df_b1['NAME'].isin(['IP1', 'IP2', 'IP4', 'IP5', 'IP6', 'IP8'])]
-        self.ip_df_b1['NAME'] = self.ip_df_b1['NAME'].str.lower()  
+        self.ip_df_b1.loc[:, 'NAME'] = self.ip_df_b1['NAME'].str.lower()
         self.ip_df_b2 = df_b2[df_b2['NAME'].isin(['IP1', 'IP2', 'IP4', 'IP5', 'IP6', 'IP8'])]
-        self.ip_df_b2['NAME'] = self.ip_df_b2['NAME'].str.lower()    
+        self.ip_df_b2.loc[:, 'NAME'] = self.ip_df_b2['NAME'].str.lower()   
         
         #get rid of undefined and unnecessary values
         self.aper_b1 = df_b1[(df_b1['APER_1'] < 1) & (df_b1['APER_1'] != 0) & (df_b1['APER_2'] < 1) & (df_b1['APER_2'] != 0)]
@@ -62,15 +63,20 @@ class AperPlot:
         elif ip == 'ip8': ip0 = 'ip4'
         else: print('Incorrect IP') #TODO change that to error pop-up
 
-        # Set the chosen IP as the middle
-        self.line_b1.cycle(ip0)
-        self.line_b2.cycle(ip0)
+        # Shift the aperture
+        if ip == 'ip1':
+            shift_and_redefine(self.aper_b1, self.ip_df_b1.loc[self.ip_df_b1['NAME'] == ip0, 'S'].iloc[0])
+            shift_and_redefine(self.aper_b2, self.ip_df_b2.loc[self.ip_df_b2['NAME'] == ip0, 'S'].iloc[0])
+
+            # Set the chosen IP as the middle
+            self.line_b1.cycle(ip0)
+            self.line_b2.cycle(ip0)
 
         # Generate twiss
         print('Computing twiss for beam 1...')
-        tw_b1 = self.line_b1.twiss().to_pandas()
+        tw_b1 = self.line_b1.twiss(skip_global_quantities=True).to_pandas()
         print('Computing twiss for beam 2...')
-        tw_b2 = self.line_b2.twiss(reverse=True).to_pandas()
+        tw_b2 = self.line_b2.twiss(skip_global_quantities=True).to_pandas()
         print('Done computing twiss.')
 
         # Remove the aperture
@@ -86,30 +92,15 @@ class AperPlot:
         self._define_nominal_crossing(tw_b1, tw_b2)
         self._define_attributes(tw_b1, tw_b2)
 
-        # Shift the aperture accordingly
-
-        columns_to_shift = self.aper_b1.columns[self.aper_b1.columns != 'S'] #Exclude column 'S'
-
-        s_b1 = self.ip_df_b1.loc[self.ip_df_b1['NAME'] == ip0, 'S'].values[0]
-        s_b2 = self.ip_df_b2.loc[self.ip_df_b2['NAME'] == ip0, 'S'].values[0]
-        
-        shift_b1 = -(self.aper_b1['S'] - s_b1).abs().idxmin()
-        shift_b2 = -(self.aper_b2['S'] - s_b2).abs().idxmin()
-
-        #TODO fix that bit
-        for col in columns_to_shift:
-            self.aper_b1[col] = self.aper_b1[col].shift(shift_b1, fill_value=self.aper_b1[col].iloc[:shift_b1].values)
-            self.aper_b2[col] = self.aper_b2[col].shift(shift_b2, fill_value=self.aper_b2[col].iloc[:shift_b2].values)
-
 
     def _define_nominal_crossing(self, tw_b1, tw_b2):
 
         # Define the nominal crossing for given configuration
         self.nominalx_b1 = tw_b1.x
-        self.nominalx_b2 = -tw_b2.x
+        self.nominalx_b2 = tw_b2.x
         
         self.nominaly_b1 = tw_b1.y
-        self.nominaly_b2 = tw_b2.y
+        self.nominaly_b2 = -tw_b2.y
 
     def _define_attributes(self, tw_b1, tw_b2):
         
@@ -128,11 +119,11 @@ class AperPlot:
         self.sigmay_b1 = np.sqrt(self.bety_b1*self.emitt/self.gamma)   
         
         # Position and element names for beam 2
-        self.s_b2 = tw_b2.s.to_numpy()[-1] - tw_b2.s.to_numpy()
+        self.s_b2 = tw_b2.s.to_numpy()
         self.name_b2 = tw_b2.name.to_numpy()
             
         # Horizontal data for beam 1
-        self.x_b2 = -tw_b2.x.to_numpy()
+        self.x_b2 = tw_b2.x.to_numpy()
         self.betx_b2 = tw_b2.betx.to_numpy()
         self.sigmax_b2 = np.sqrt(self.betx_b2*self.emitt/self.gamma)
 
@@ -234,7 +225,7 @@ class AperPlot:
             top_aper_b1 = go.Scatter(x=self.aper_b1.S, y=self.aper_b1.APER_2, mode='lines', line=dict(color='gray'), name='Aperture')
             bottom_aper_b1 = go.Scatter(x=self.aper_b1.S, y=-self.aper_b1.APER_2, mode='lines', line=dict(color='gray'), name='Aperture')
             top_aper_b2 = go.Scatter(x=self.aper_b2.S, y=self.aper_b2.APER_2, mode='lines', line=dict(color='gray'), name='Aperture')
-            bottom_aper_b2 = go.Scatter(x=self.aper_b2.S, y=-self.aper_b12.APER_2, mode='lines', line=dict(color='gray'), name='Aperture') 
+            bottom_aper_b2 = go.Scatter(x=self.aper_b2.S, y=-self.aper_b2.APER_2, mode='lines', line=dict(color='gray'), name='Aperture') 
             
             b1 = go.Scatter(x=self.s_b1, y=self.y_b1, mode='lines', line=dict(color='blue'), name='Beam 1')
             b2 = go.Scatter(x=self.s_b2, y=self.y_b2, mode='lines', line=dict(color='red'),name='Beam 2')
