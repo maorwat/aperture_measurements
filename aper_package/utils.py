@@ -13,7 +13,7 @@ def select_file(initial_path='/eos/project-c/collimation-team/machine_configurat
     return file_chooser
 
 
-def match_indices(short_arr, long_arr):
+def match_indices_np(short_arr, long_arr):
     """
     Function to find the closest indices using a linear scan on sorted arrays
     Facilitates numpy operations
@@ -26,26 +26,45 @@ def match_indices(short_arr, long_arr):
 
     return long_arr_indices
 
-def shift_and_redefine(df, delta_s):
+def match_indices_slow(short_df, long_df):
+    """
+    Function to find the closest indices using a linear scan on sorted arrays
+    Facilitates numpy operations
+    """
+    long_df_indices = []
+    new_long_df = long_df[~long_df.name.str.contains('drift')]
 
-    # Calculate the shift required to make the minimum s value zero
-    df['S'] = df['S'] - delta_s
-    #last_value = df['S'].iloc[-1] - df['S'].iloc[0]
-    last_value = 26658.88318 - delta_s - df['S'].iloc[0]
+    for i in range(short_df.shape[0]):
+        #find the index of s2 that's the closest to s1[i]
+        j = round(new_long_df['s'], 5) == short_df['S'].iloc[i]
+        long_df_indices.append(j)
 
-    # Find index of first positive value in 'S'
-    first_positive_index = df[df['S'] > 0].index.min()
+    return long_df_indices
 
-    # Roll all columns by the same amount
-    for col in df.columns:
-        df[col] = np.roll(df[col], -first_positive_index+1)
+def match_indices(short_df, long_df):
+    """
+    Function to find the closest indices using a linear scan on sorted arrays
+    Facilitates numpy operations
+    """
+    long_df_indices = []
+    new_long_df = long_df[~long_df.name.str.contains('drift')]
+
+    for i in range(short_df.shape[0]):
+        #find the index of s2 that's the closest to s1[i]
+        j = round(new_long_df['s'], 5) == short_df['S'].iloc[i]
+        long_df_indices.append(j)
+
+    return long_df_indices
+
+def shift_and_redefine(df, new_zero):
+
+    # Substract the new 0 from S
+    df['S'] = df['S'] - new_zero
+    # Calculate the shift required to set new_zero as 0
+    last_value = 26658.88318
 
     # Add add_amount to 'S' values less than 0
     df.loc[df['S'] < 0, 'S'] += last_value
-
-    # Check if the last value of 'S' is zero and add last_value if it is
-    if df['S'].iloc[-1] == 0:
-        df['S'].iloc[-1] += last_value
 
     df = df.sort_values(by='S')
     df = df.reset_index(drop=True)
