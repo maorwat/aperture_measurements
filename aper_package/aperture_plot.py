@@ -25,12 +25,12 @@ class AperPlot:
                  n = 0,
                  emitt = 3.5e-6,
                  gamma = 7247.364689,
-                 path1 = "/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX/levelling.20/all_optics_B1.tfs", 
-                 path2 = "/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX/levelling.20/all_optics_B4.tfs",
-                 line1 = '/home/morwat/cernbox/aperture_measurements/madx/2023/xsuite/Martas_levelling.20_b1.json',
-                 line2 = '/home/morwat/cernbox/aperture_measurements/madx/2023/xsuite/Martas_levelling.20_b2.json',
+                 path1 = "/home/morwat/cernbox/aperture_measurements/madx/2023/all_optics_B1.tfs", 
+                 path2 = "/home/morwat/cernbox/aperture_measurements/madx/2023/all_optics_B4.tfs",
+                 line1 = '/home/morwat/cernbox/aperture_measurements/madx/2023/xsuite/Martas_injection_b1.json',
+                 line2 = '/home/morwat/cernbox/aperture_measurements/madx/2023/xsuite/Martas_injection_b2.json',
                  machine_components_path = '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/all_optics_B1.tfs',
-                 collimators_path = '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/levelling.20.yaml'):
+                 collimators_path = '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
         
         self.emitt = emitt
         self.gamma = gamma
@@ -40,6 +40,7 @@ class AperPlot:
         self.machine_components_path = machine_components_path
         self.collimators_path = collimators_path   
 
+        # Drop uneeded columns and duplicates
         df_b1 = tfs.read(path1)[['S', 'NAME', 'APER_1', 'APER_2']]
         df_b1.drop_duplicates(subset=['S'])
         df_b2 = tfs.read(path2)[['S', 'NAME', 'APER_1', 'APER_2']]
@@ -51,27 +52,24 @@ class AperPlot:
         self.ip_df_b2 = df_b2[df_b2['NAME'].isin(['IP1', 'IP2', 'IP4', 'IP5', 'IP6', 'IP8'])]
         self.ip_df_b2.loc[:, 'NAME'] = self.ip_df_b2['NAME'].str.lower()   
         
-        #get rid of undefined and unnecessary values
+        # Get rid of undefined and unnecessary values
         self.aper_b1 = df_b1[(df_b1['APER_1'] < 1) & (df_b1['APER_1'] != 0) & (df_b1['APER_2'] < 1) & (df_b1['APER_2'] != 0)]
         self.aper_b2 = df_b2[(df_b2['APER_1'] < 1) & (df_b2['APER_1'] != 0) & (df_b2['APER_2'] < 1) & (df_b2['APER_2'] != 0)]
+
+        # Shift the aperture
+        if self.ip == 'ip1':
+            self.aper_b1 = shift_and_redefine(self.aper_b1, self.ip_df_b1.loc[self.ip_df_b1['NAME'] == 'ip5', 'S'].iloc[0], 'S')
+            self.aper_b2 = shift_and_redefine(self.aper_b2, self.ip_df_b2.loc[self.ip_df_b2['NAME'] == 'ip5', 'S'].iloc[0], 'S')
 
         # Load a line and build tracker
         self.line_b1 = xt.Line.from_json(line1)
         self.line_b2 = xt.Line.from_json(line2)
 
+        # Twiss
         self.twiss()
         self._define_nominal_crossing()
 
     def twiss(self):
-
-        # Shift the aperture
-        if self.ip == 'ip1':
-            self.aper_b1 = shift_and_redefine(self.aper_b1, self.ip_df_b1.loc[self.ip_df_b1['NAME'] == 'ip5', 'S'].iloc[0])
-            self.aper_b2 = shift_and_redefine(self.aper_b2, self.ip_df_b2.loc[self.ip_df_b2['NAME'] == 'ip5', 'S'].iloc[0])
-
-            # Set IP1 as the middle
-            self.line_b1.cycle('ip5')
-            self.line_b2.cycle('ip5')
 
         # Generate twiss
         print('Computing twiss for beam 1...')
@@ -83,30 +81,31 @@ class AperPlot:
         # Remove the aperture
         tw_b1 = tw_b1[~tw_b1.name.str.contains('aper')]
         tw_b2 = tw_b2[~tw_b2.name.str.contains('aper')]
+        tw_b1 = tw_b1[~tw_b1.name.str.contains('drift')]
+        tw_b2 = tw_b2[~tw_b2.name.str.contains('drift')]
 
         print('Almost there...')
+
         tw_b2['y'] = -tw_b2['y']
 
         # Drop the unnecessary columns
         self.tw_b1 = tw_b1[['s', 'name', 'x', 'y', 'betx', 'bety']]
         self.tw_b2 = tw_b2[['s', 'name', 'x', 'y', 'betx', 'bety']]
 
+        # Shift the aperture
+        if self.ip == 'ip1':
+            self.tw_b1 = shift_and_redefine(self.tw_b1, self.ip_df_b1.loc[self.ip_df_b1['NAME'] == 'ip5', 'S'].iloc[0], 's')
+            self.tw_b2 = shift_and_redefine(self.tw_b2, self.ip_df_b2.loc[self.ip_df_b2['NAME'] == 'ip5', 'S'].iloc[0], 's')
+
         # Define attributes
         self._define_sigma()
         self.envelope(self.n)
 
-
     def _define_nominal_crossing(self):
 
         # Define the nominal crossing for given configuration
-        self.nom_x_b1 = self.tw_b1['x']
-        self.nom_y_b1 = self.tw_b1['y']
-        
-        self.nom_x_b2 = self.tw_b2['x']
-        self.nom_y_b2 = self.tw_b2['y']
-
-        self.nom_s_b1 = self.tw_b1['s']
-        self.nom_s_b2 = self.tw_b2['s']
+        self.nom_b1 = self.tw_b1[['x', 'y', 's']].copy()
+        self.nom_b2 = self.tw_b2[['x', 'y', 's']].copy()
 
     def _define_sigma(self):
 
@@ -147,69 +146,74 @@ class AperPlot:
         xname_b2 = col_b2.columns[col_b2.loc['angle'] == 0].to_numpy()
         yname_b2 = col_b2.columns[col_b2.loc['angle'] == 90].to_numpy()
 
-        def get_df(name, yaml_df, twiss_data, sigma_key):
+        def get_df(name, yaml_df, twiss_data, sigma_key, x_key):
 
             col = yaml_df[name]
             gap = np.array([np.nan if x is None else x for x in col.loc['gap']])
             indx = np.where(np.isin(twiss_data["name"], name))[0]
             s_col = twiss_data["s"].to_numpy()[indx]
+            x_col = twiss_data[x_key].to_numpy()[indx]
             sigma = twiss_data[sigma_key].to_numpy()[indx]
-            gap_col = sigma * gap
+            top_gap_col = sigma * gap + x_col
+            bottom_gap_col = -sigma * gap + x_col
 
             data = {'NAME': name,
-                    'GAP': gap_col,
+                    'GAPt': top_gap_col,
+                    'GAPb': bottom_gap_col,
                     'S': s_col}
             
             df = pd.DataFrame(data)
 
             if self.ip == 'ip1':
-                df = shift_and_redefine(df, self.ip_df_b1.loc[self.ip_df_b1['NAME'] == 'ip5', 'S'].iloc[0])
+                df = shift_and_redefine(df, self.ip_df_b1.loc[self.ip_df_b1['NAME'] == 'ip5', 'S'].iloc[0], 'S')
 
             return df
         
         # Create the DataFrames
-        dfx_b1 = get_df(xname_b1, col_b1, self.tw_b1, 'sigma_x')
-        dfy_b1 = get_df(yname_b1, col_b1, self.tw_b1, 'sigma_y')
-        dfx_b2 = get_df(xname_b2, col_b2, self.tw_b2, 'sigma_x')
-        dfy_b2 = get_df(yname_b2, col_b2, self.tw_b2, 'sigma_y')
+        dfx_b1 = get_df(xname_b1, col_b1, self.tw_b1, 'sigma_x', 'x')
+        dfy_b1 = get_df(yname_b1, col_b1, self.tw_b1, 'sigma_y', 'y')
+        dfx_b2 = get_df(xname_b2, col_b2, self.tw_b2, 'sigma_x', 'x')
+        dfy_b2 = get_df(yname_b2, col_b2, self.tw_b2, 'sigma_y', 'y')
   
+        #TODO add buttons
+
         if plane == 'h':
             # Add x collimators
             for i in range(dfx_b1.shape[0]):
-                x0, y0, x1, y1 = dfx_b1.S.iloc[i] - 0.5, dfx_b1.GAP.iloc[i], dfx_b1.S.iloc[i] + 0.5, 0.05
-                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], fill="toself", mode='lines',
+                x0, y0b, y0t, x1, y1 = dfx_b1.S.iloc[i] - 0.5, dfx_b1.GAPb.iloc[i], dfx_b1.GAPt.iloc[i], dfx_b1.S.iloc[i] + 0.5, 0.05
+                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0t, y1, y1, y0t], fill="toself", mode='lines',
                              fillcolor='black', line=dict(color='black'), name=dfx_b1.NAME.iloc[i]), row=2, col=1)
-                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[-y0, -y1, -y1, -y0], fill="toself", mode='lines',
+                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0b, -y1, -y1, y0b], fill="toself", mode='lines',
                              fillcolor='black', line=dict(color='black'), name=dfx_b1.NAME.iloc[i]), row=2, col=1)
                 
             for i in range(dfx_b2.shape[0]):
-                x0, y0, x1, y1 = dfx_b2.S.iloc[i] - 0.5, dfx_b2.GAP.iloc[i], dfx_b2.S.iloc[i] + 0.5, 0.05
-                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], fill="toself", mode='lines',
+                x0, y0b, y0t, x1, y1 = dfx_b2.S.iloc[i] - 0.5, dfx_b2.GAPb.iloc[i], dfx_b2.GAPt.iloc[i], dfx_b2.S.iloc[i] + 0.5, 0.05
+                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0t, y1, y1, y0t], fill="toself", mode='lines',
                              fillcolor='black', line=dict(color='black'), name=dfx_b2.NAME.iloc[i]), row=2, col=1)
-                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[-y0, -y1, -y1, -y0], fill="toself", mode='lines',
+                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0b, -y1, -y1, y0b], fill="toself", mode='lines',
                              fillcolor='black', line=dict(color='black'), name=dfx_b2.NAME.iloc[i]), row=2, col=1)
 
         if plane == 'v':
             # Add y collimators
             for i in range(dfy_b1.shape[0]):
-                x0, y0, x1, y1 = dfy_b1.S.iloc[i] - 0.5, dfy_b1.GAP.iloc[i], dfy_b1.S.iloc[i] + 0.5, 0.05
-                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], fill="toself", mode='lines',
+                x0, y0b, y0t, x1, y1 = dfy_b1.S.iloc[i] - 0.5, dfy_b1.GAPb.iloc[i], dfy_b1.GAPt.iloc[i], dfy_b1.S.iloc[i] + 0.5, 0.05
+                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0t, y1, y1, y0t], fill="toself", mode='lines',
                              fillcolor='black', line=dict(color='black'), name=dfy_b1.NAME.iloc[i]), row=2, col=1)
-                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[-y0, -y1, -y1, -y0], fill="toself", mode='lines',
+                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0b, -y1, -y1, y0b], fill="toself", mode='lines',
                              fillcolor='black', line=dict(color='black'), name=dfy_b1.NAME.iloc[i]), row=2, col=1)
                 
             for i in range(dfy_b2.shape[0]):
-                x0, y0, x1, y1 = dfy_b2.S.iloc[i] - 0.5, dfy_b2.GAP.iloc[i], dfy_b2.S.iloc[i] + 0.5, 0.05
-                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], fill="toself", mode='lines',
+                x0, y0b, y0t, x1, y1 = dfy_b2.S.iloc[i] - 0.5, dfy_b2.GAPb.iloc[i], dfy_b2.GAPt.iloc[i], dfy_b2.S.iloc[i] + 0.5, 0.05
+                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0t, y1, y1, y0t], fill="toself", mode='lines',
                              fillcolor='black', line=dict(color='black'), name=dfy_b2.NAME.iloc[i]), row=2, col=1)
-                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[-y0, -y1, -y1, -y0], fill="toself", mode='lines',
+                fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0b, -y1, -y1, y0b], fill="toself", mode='lines',
                              fillcolor='black', line=dict(color='black'), name=dfy_b2.NAME.iloc[i]), row=2, col=1)
 
     def _add_machine_components(self, fig, row, column):
         
         df = tfs.read(self.machine_components_path)
 
-        if self.ip == 'ip1': df = shift_and_redefine(df, df.loc[df['NAME'] == 'IP5', 'S'].iloc[0])
+        if self.ip == 'ip1': df = shift_and_redefine(df, df.loc[df['NAME'] == 'IP5', 'S'].iloc[0], 'S')
 
         objects = ["SBEND", "COLLIMATOR", "SEXTUPOLE", "RBEND", "QUADRUPOLE"]
         colors = ['lightblue', 'black', 'hotpink', 'green', 'red']
@@ -227,11 +231,17 @@ class AperPlot:
                 fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], fill="toself", mode='lines',
                              fillcolor=colors[n], line=dict(color=colors[n]), name=obj_df.iloc[i]['NAME']), row=row, col=column) 
 
-    def min_distance_to_aperture(self):
+    def _distance_to_aperture(self, fig, plane):
+        
+        nom_b1 = self.nom_b1.rename(columns={'x': 'nom_x', 'y': 'nom_y'})
+        nom_b2 = self.nom_b2.rename(columns={'x': 'nom_x', 'y': 'nom_y'})
 
         # Merge twiss and aperture data
-        merged_b1 = pd.merge_asof(self.tw_b1[~self.tw_b1.name.str.contains('drift')], self.aper_b1, left_on='s', right_on='S', direction='nearest', tolerance=0.00001)
-        merged_b2 = pd.merge_asof(self.tw_b2[~self.tw_b2.name.str.contains('drift')], self.aper_b2, left_on='s', right_on='S', direction='nearest', tolerance=0.00001)
+        merged_b1 = pd.merge_asof(self.tw_b1, self.aper_b1, left_on='s', right_on='S', direction='nearest', tolerance=0.00001)
+        merged_b2 = pd.merge_asof(self.tw_b2, self.aper_b2, left_on='s', right_on='S', direction='nearest', tolerance=0.00001)
+
+        merged_b1 = pd.merge_asof(merged_b1, nom_b1, left_on='s', right_on='s', direction='nearest', tolerance=0.00001)
+        merged_b2 = pd.merge_asof(merged_b2, nom_b2, left_on='s', right_on='s', direction='nearest', tolerance=0.00001)
 
         # Drop all the rows with NaNs
         merged_b1 = merged_b1.dropna()
@@ -241,13 +251,102 @@ class AperPlot:
         merged_b1 = merged_b1.drop(columns=['S', 'NAME'])
         merged_b2 = merged_b2.drop(columns=['S', 'NAME'])
 
-        # Need to add from nominal to top envelope
-        # from nominal to bottom envelope for both beams
-        # then distance from the top envelope to the top aperture 
-        # and from the bottom envelope to the bottom aperture
-        # find the minimum
-        # check for any negative values, if so find what elements where touched
-        # maybe add a marker on the graph to show where the aperture was touched
+        if plane == 'h':
+
+            # Calculate distance from the envelope to the nominal beam
+            merged_b1['from_nom_to_top'] = (merged_b1['x_up'] - merged_b1['nom_x'])/merged_b1['sigma_x']
+            merged_b2['from_nom_to_top'] = (merged_b2['x_up'] - merged_b2['nom_x'])/merged_b2['sigma_x']
+
+            merged_b1['from_nom_to_bottom'] = (-merged_b1['x_down'] + merged_b1['nom_x'])/merged_b1['sigma_x']
+            merged_b2['from_nom_to_bottom'] = (-merged_b2['x_down'] + merged_b2['nom_x'])/merged_b2['sigma_x']
+
+            # Calculate distance from the envelope to the aperture
+            merged_b1['from_top_to_aper'] = merged_b1['APER_1'] - merged_b1['x_up']
+            merged_b2['from_top_to_aper'] = merged_b2['APER_1'] - merged_b2['x_up']
+
+            merged_b1['from_bottom_to_aper'] = merged_b1['x_down'] + merged_b1['APER_1']
+            merged_b2['from_bottom_to_aper'] = merged_b2['x_down'] + merged_b2['APER_1']
+
+        elif plane == 'v':
+
+            # Calculate distance from the envelope to the nominal beam
+            merged_b1['from_nom_to_top'] = (merged_b1['y_up'] - merged_b1['nom_y'])/merged_b1['sigma_y']
+            merged_b2['from_nom_to_top'] = (merged_b2['y_up'] - merged_b2['nom_y'])/merged_b2['sigma_y']
+
+            merged_b1['from_nom_to_bottom'] = (-merged_b1['y_down'] + merged_b1['nom_y'])/merged_b1['sigma_y']
+            merged_b2['from_nom_to_bottom'] = (-merged_b2['y_down'] + merged_b2['nom_y'])/merged_b2['sigma_y']
+
+            # Calculate distance from the envelope to the aperture
+            merged_b1['from_top_to_aper'] = merged_b1['APER_2'] - merged_b1['y_up']
+            merged_b2['from_top_to_aper'] = merged_b2['APER_2'] - merged_b2['y_up']
+
+            merged_b1['from_bottom_to_aper'] = merged_b1['y_down'] + merged_b1['APER_2']
+            merged_b2['from_bottom_to_aper'] = merged_b2['y_down'] + merged_b2['APER_2']
+
+
+        touched_top_b1 = (merged_b1['from_top_to_aper'] < 0)
+        touched_bottom_b1 = (merged_b1['from_bottom_to_aper'] < 0)
+
+        touched_top_b2 = (merged_b2['from_top_to_aper'] < 0)
+        touched_bottom_b2 = (merged_b2['from_bottom_to_aper'] < 0)
+
+        # Define hover template with customdata
+        hover_template = ("s: %{x} [m]<br>"
+                            "x: %{y} [m]<br>"
+                            "distance from nominal: %{customdata} [σ]")
+
+        if touched_top_b1.any():
+
+            elements = merged_b1[touched_top_b1]['name'].tolist()
+            s = merged_b1[touched_top_b1]['s'].tolist()
+            d = merged_b1[touched_top_b1]['from_nom_to_top'].tolist()
+            if plane == 'h': x = merged_b1[touched_top_b1]['x_up'].tolist()
+            elif plane == 'v': x = merged_b1[touched_top_b1]['y_up'].tolist()
+
+            trace_top_b1 = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), customdata=d, hovertemplate = hover_template)
+            fig.add_trace(trace_top_b1, row=2, col=1)
+            print(f'Top aperture touched by beam 1 between element {elements[0]} and {elements[-1]}.')
+            self.touched_top_elements_b1 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
+        
+        if touched_top_b2.any():
+            elements = merged_b2[touched_top_b2]['name'].tolist()
+            s = merged_b2[touched_top_b2]['s'].tolist()
+            d = merged_b2[touched_top_b2]['from_nom_to_top'].tolist()
+            if plane == 'h': x = merged_b2[touched_top_b2]['x_up'].tolist()
+            elif plane == 'v': x = merged_b2[touched_top_b2]['y_up'].tolist()
+
+            trace_top_b2 = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), customdata=d, hovertemplate = hover_template)
+            fig.add_trace(trace_top_b2, row=2, col=1)
+            print(f'Top aperture touched by beam 2 between element {elements[0]} and {elements[-1]}.')
+            self.touched_top_elements_b2 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
+
+        if touched_bottom_b1.any():
+            elements = merged_b1[touched_bottom_b1]['name'].tolist()
+            s = merged_b1[touched_bottom_b1]['s'].tolist()
+            d = merged_b1[touched_bottom_b1]['from_nom_to_bottom'].tolist()
+            if plane == 'h': x = merged_b1[touched_bottom_b1]['x_down'].tolist()
+            elif plane == 'v': x = merged_b1[touched_bottom_b1]['y_down'].tolist()
+
+            trace_bottom_b1 = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), customdata=d, hovertemplate = hover_template)
+            fig.add_trace(trace_bottom_b1, row=2, col=1)
+            print(f'Bottom aperture touched by beam 1 between element {elements[0]} and {elements[-1]}.')
+            self.touched_bottom_elements_b1 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
+
+        if touched_bottom_b2.any():
+            elements = merged_b2[touched_bottom_b2]['name'].tolist()
+            s = merged_b2[touched_bottom_b2]['s'].tolist()
+            d = merged_b2[touched_bottom_b2]['from_nom_to_bottom'].tolist()
+            if plane == 'h': x = merged_b2[touched_bottom_b2]['x_down'].tolist()
+            elif plane == 'v': x = merged_b2[touched_bottom_b2]['y_down'].tolist()
+
+            trace_bottom_b2 = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), customdata=d, hovertemplate = hover_template)
+            fig.add_trace(trace_bottom_b2, row=2, col=1)
+            print(f'Bottom aperture touched by beam 2 between element {elements[0]} and {elements[-1]}.')
+            self.touched_bottom_elements_b2 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
+
+        if not (touched_top_b1.any() or touched_bottom_b1.any() or touched_top_b2.any() or touched_bottom_b2.any()):
+            # Find minimum
+            print('Aperture not touched.')
 
     def change_crossing_angle(self, ip, angle, plane = 'h'):
     
@@ -295,7 +394,7 @@ class AperPlot:
                 self.line_b1.vars['on_sep8h'] = value
                 self.line_b2.vars['on_sep8h'] = value
 
-    def sperctrometer(self, ip, value):
+    def spectrometer(self, ip, value):
 
         if ip == 'ip2':
             self.line_b1.vars['on_alice'] = value
@@ -322,8 +421,8 @@ class AperPlot:
 
             b1 = go.Scatter(x=self.tw_b1.s, y=self.tw_b1.x, mode='lines', line=dict(color='blue'), name='Beam 1')
             b2 = go.Scatter(x=self.tw_b2.s, y=self.tw_b2.x, mode='lines', line=dict(color='red'), name='Beam 2')
-            nom_b1 = go.Scatter(x=self.nom_s_b1, y=self.nom_x_b1, mode='lines', line=dict(color='blue', dash='dash'), name='Beam 1')
-            nom_b2 = go.Scatter(x=self.nom_s_b2, y=self.nom_x_b2, mode='lines', line=dict(color='red', dash='dash'), name='Beam 2')
+            nom_b1 = go.Scatter(x=self.nom_b1.s, y=self.nom_b1.x, mode='lines', line=dict(color='blue', dash='dash'), name='Beam 1')
+            nom_b2 = go.Scatter(x=self.nom_b2.s, y=self.nom_b2.x, mode='lines', line=dict(color='red', dash='dash'), name='Beam 2')
             
             up_b1 = self.tw_b1.x_up
             down_b1 = self.tw_b1.x_down
@@ -341,8 +440,9 @@ class AperPlot:
             
             b1 = go.Scatter(x=self.tw_b1.s, y=self.tw_b1.y, mode='lines', line=dict(color='blue'), name='Beam 1')
             b2 = go.Scatter(x=self.tw_b2.s, y=self.tw_b2.y, mode='lines', line=dict(color='red'),name='Beam 2')
-            nom_b1 = go.Scatter(x=self.nom_s_b1, y=self.nom_y_b1, mode='lines', line=dict(color='blue', dash='dash'), name='Beam 1')
-            nom_b2 = go.Scatter(x=self.nom_s_b2, y=self.nom_y_b2, mode='lines', line=dict(color='red', dash='dash'), name='Beam 2')
+            # TODO sometimes the beams are upside down????????????
+            nom_b1 = go.Scatter(x=self.nom_b1.s, y=self.nom_b1.y, mode='lines', line=dict(color='blue', dash='dash'), name='Beam 1')
+            nom_b2 = go.Scatter(x=self.nom_b2.s, y=self.nom_b2.y, mode='lines', line=dict(color='red', dash='dash'), name='Beam 2')
             
             up_b1 = self.tw_b1.y_up
             down_b1 = self.tw_b1.y_down
@@ -387,6 +487,7 @@ class AperPlot:
                     fig.add_trace(i, row=2, col=1) 
 
         self._add_machine_components(fig=fig, row=1, column=1)
+        self._distance_to_aperture(fig=fig, plane=plane)
 
         if show_collimators:
             self._add_collimators(fig=fig, plane = plane, row=2, column=1)
