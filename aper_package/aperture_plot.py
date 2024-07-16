@@ -32,6 +32,7 @@ class AperPlot:
                  machine_components_path = '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/all_optics_B1.tfs',
                  collimators_path = '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
         
+        # Define necessary variables
         self.emitt = emitt
         self.gamma = gamma
         self.n = n
@@ -55,18 +56,20 @@ class AperPlot:
         # Get rid of undefined and unnecessary values
         self.aper_b1 = df_b1[(df_b1['APER_1'] < 1) & (df_b1['APER_1'] != 0) & (df_b1['APER_2'] < 1) & (df_b1['APER_2'] != 0)]
         self.aper_b2 = df_b2[(df_b2['APER_1'] < 1) & (df_b2['APER_1'] != 0) & (df_b2['APER_2'] < 1) & (df_b2['APER_2'] != 0)]
-
-        # Shift the aperture
-        if self.ip == 'ip1':
-            self.aper_b1 = shift_and_redefine(self.aper_b1, self.ip_df_b1.loc[self.ip_df_b1['NAME'] == 'ip5', 'S'].iloc[0], 'S')
-            self.aper_b2 = shift_and_redefine(self.aper_b2, self.ip_df_b2.loc[self.ip_df_b2['NAME'] == 'ip5', 'S'].iloc[0], 'S')
-
+        
         # Load a line and build tracker
         self.line_b1 = xt.Line.from_json(line1)
         self.line_b2 = xt.Line.from_json(line2)
 
         # Twiss
         self.twiss()
+
+        # Shift the aperture is ip1
+        if self.ip == 'ip1':
+            self.aper_b1 = shift_and_redefine(self.aper_b1, self.ip_df_b1.loc[self.ip_df_b1['NAME'] == 'ip5', 'S'].iloc[0], 'S')
+            self.aper_b2 = shift_and_redefine(self.aper_b2, self.ip_df_b2.loc[self.ip_df_b2['NAME'] == 'ip5', 'S'].iloc[0], 'S')
+
+        # Keep the nominal crossing seperately for calculations
         self._define_nominal_crossing()
 
     def twiss(self):
@@ -78,25 +81,27 @@ class AperPlot:
         tw_b2 = self.line_b2.twiss(skip_global_quantities=True).to_pandas()
         print('Done computing twiss.')
 
-        # Remove the aperture
+        # Remove the aperture and drift
         tw_b1 = tw_b1[~tw_b1.name.str.contains('aper')]
         tw_b2 = tw_b2[~tw_b2.name.str.contains('aper')]
         tw_b1 = tw_b1[~tw_b1.name.str.contains('drift')]
         tw_b2 = tw_b2[~tw_b2.name.str.contains('drift')]
 
         print('Almost there...')
-
+        # Redefine y axis
         tw_b2['y'] = -tw_b2['y']
 
-        # Drop the unnecessary columns
-        self.tw_b1 = tw_b1[['s', 'name', 'x', 'y', 'betx', 'bety']]
-        self.tw_b2 = tw_b2[['s', 'name', 'x', 'y', 'betx', 'bety']]
+        # For some reason the IPs are sometimes misaliged, correct that
+        self.ip_diff = tw_b1.loc[tw_b1['name'] == self.ip, 's'].values[0]-tw_b2.loc[tw_b2['name'] == self.ip, 's'].values[0]
+        if self.ip_diff < 0:
+            tw_b2 = shift_and_redefine(tw_b2, self.ip_diff, 's')
+        elif self.ip_diff > 0:
+            shifted_tw_b2 = shift_and_redefine(tw_b2, tw_b2.s.iloc[-1]-abs(self.ip_diff), 's')
 
-        # Shift the aperture
-        if self.ip == 'ip1':
-            self.tw_b1 = shift_and_redefine(self.tw_b1, self.ip_df_b1.loc[self.ip_df_b1['NAME'] == 'ip5', 'S'].iloc[0], 's')
-            self.tw_b2 = shift_and_redefine(self.tw_b2, self.ip_df_b2.loc[self.ip_df_b2['NAME'] == 'ip5', 'S'].iloc[0], 's')
-
+        # Drop unnecessary columns and make sure everything is sorted for plotting
+        self.tw_b1 = tw_b1[['s', 'name', 'x', 'y', 'betx', 'bety']].sort_values(by='s').reset_index(drop=True)
+        self.tw_b2 = tw_b2[['s', 'name', 'x', 'y', 'betx', 'bety']].sort_values(by='s').reset_index(drop=True)
+        
         # Define attributes
         self._define_sigma()
         self.envelope(self.n)
@@ -119,7 +124,7 @@ class AperPlot:
 
         self.n = n
         
-        #recalculate the envelope edges for the new envelope size
+        # Recalculate the envelope edges for the new envelope size
         self.tw_b1.loc[:, 'x_up'] = self.tw_b1['x'] + n * self.tw_b1['sigma_x']
         self.tw_b1.loc[:, 'x_down'] = self.tw_b1['x'] - n * self.tw_b1['sigma_x']
         self.tw_b1.loc[:, 'y_up'] = self.tw_b1['y'] + n * self.tw_b1['sigma_y']
@@ -148,15 +153,21 @@ class AperPlot:
 
         def get_df(name, yaml_df, twiss_data, sigma_key, x_key):
 
+            # Load collimators for specified beam and plane
             col = yaml_df[name]
+            # Remove nans
             gap = np.array([np.nan if x is None else x for x in col.loc['gap']])
+            # Find the selected collimators in twiss data
             indx = np.where(np.isin(twiss_data["name"], name))[0]
+            # Load their positions, x, and sigma
             s_col = twiss_data["s"].to_numpy()[indx]
             x_col = twiss_data[x_key].to_numpy()[indx]
             sigma = twiss_data[sigma_key].to_numpy()[indx]
+            # Calculate gap in meters
             top_gap_col = sigma * gap + x_col
             bottom_gap_col = -sigma * gap + x_col
 
+            # Create a DataFrame out of the above data
             data = {'NAME': name,
                     'GAPt': top_gap_col,
                     'GAPb': bottom_gap_col,
@@ -164,9 +175,10 @@ class AperPlot:
             
             df = pd.DataFrame(data)
 
+            # Shift if IP1
+            # Still need to test that
             if self.ip == 'ip1':
                 df = shift_and_redefine(df, self.ip_df_b1.loc[self.ip_df_b1['NAME'] == 'ip5', 'S'].iloc[0], 'S')
-
             return df
         
         # Create the DataFrames
@@ -175,8 +187,8 @@ class AperPlot:
         dfx_b2 = get_df(xname_b2, col_b2, self.tw_b2, 'sigma_x', 'x')
         dfy_b2 = get_df(yname_b2, col_b2, self.tw_b2, 'sigma_y', 'y')
   
-        #TODO add buttons
-
+        #TODO add option to show only collimators for beam or beam 2
+        # Plot
         if plane == 'h':
             # Add x collimators
             for i in range(dfx_b1.shape[0]):
@@ -211,17 +223,22 @@ class AperPlot:
 
     def _add_machine_components(self, fig, row, column):
         
+        # Load the file
         df = tfs.read(self.machine_components_path)
 
+        # Shift if IP1
         if self.ip == 'ip1': df = shift_and_redefine(df, df.loc[df['NAME'] == 'IP5', 'S'].iloc[0], 'S')
 
+        # Specify the elements to plot and corresponding colors
         objects = ["SBEND", "COLLIMATOR", "SEXTUPOLE", "RBEND", "QUADRUPOLE"]
         colors = ['lightblue', 'black', 'hotpink', 'green', 'red']
 
+        # Iterate over all object types
         for n, obj in enumerate(objects):
             
             obj_df = df[df['KEYWORD'] == obj]
             
+            # Add elements to the plot
             for i in range(obj_df.shape[0]):
 
                 x0, x1 = obj_df.iloc[i]['S']-obj_df.iloc[i]['L']/2, obj_df.iloc[i]['S']+obj_df.iloc[i]['L']/2                
@@ -233,10 +250,11 @@ class AperPlot:
 
     def _distance_to_aperture(self, fig, plane):
         
+        # Rename x and y columns so they don't get mixed up
         nom_b1 = self.nom_b1.rename(columns={'x': 'nom_x', 'y': 'nom_y'})
         nom_b2 = self.nom_b2.rename(columns={'x': 'nom_x', 'y': 'nom_y'})
 
-        # Merge twiss and aperture data
+        # Merge twiss, nominal, and aperture data
         merged_b1 = pd.merge_asof(self.tw_b1, self.aper_b1, left_on='s', right_on='S', direction='nearest', tolerance=0.00001)
         merged_b2 = pd.merge_asof(self.tw_b2, self.aper_b2, left_on='s', right_on='S', direction='nearest', tolerance=0.00001)
 
@@ -283,7 +301,7 @@ class AperPlot:
             merged_b1['from_bottom_to_aper'] = merged_b1['y_down'] + merged_b1['APER_2']
             merged_b2['from_bottom_to_aper'] = merged_b2['y_down'] + merged_b2['APER_2']
 
-
+        # Check if the envelope touched the aperture
         touched_top_b1 = (merged_b1['from_top_to_aper'] < 0)
         touched_bottom_b1 = (merged_b1['from_bottom_to_aper'] < 0)
 
@@ -295,57 +313,76 @@ class AperPlot:
                             "x: %{y} [m]<br>"
                             "distance from nominal: %{customdata} [σ]")
 
+        # If beam 1 touched the top aperture
         if touched_top_b1.any():
 
+            # Find the elements touched, their locations, and distance from the nominal
             elements = merged_b1[touched_top_b1]['name'].tolist()
             s = merged_b1[touched_top_b1]['s'].tolist()
             d = merged_b1[touched_top_b1]['from_nom_to_top'].tolist()
             if plane == 'h': x = merged_b1[touched_top_b1]['x_up'].tolist()
             elif plane == 'v': x = merged_b1[touched_top_b1]['y_up'].tolist()
 
+            # Mark where the aperture was touched on the plot
             trace_top_b1 = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), customdata=d, hovertemplate = hover_template)
             fig.add_trace(trace_top_b1, row=2, col=1)
+            # Print where the aperture was touched and store it in a df attribute
             print(f'Top aperture touched by beam 1 between element {elements[0]} and {elements[-1]}.')
             self.touched_top_elements_b1 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
         
+        # If beam 2 touched the top aperture
         if touched_top_b2.any():
+
+            # Find the elements touched, their locations, and distance from the nominal
             elements = merged_b2[touched_top_b2]['name'].tolist()
             s = merged_b2[touched_top_b2]['s'].tolist()
             d = merged_b2[touched_top_b2]['from_nom_to_top'].tolist()
             if plane == 'h': x = merged_b2[touched_top_b2]['x_up'].tolist()
             elif plane == 'v': x = merged_b2[touched_top_b2]['y_up'].tolist()
 
+            # Mark where the aperture was touched on the plot
             trace_top_b2 = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), customdata=d, hovertemplate = hover_template)
             fig.add_trace(trace_top_b2, row=2, col=1)
+            # Print where the aperture was touched and store it in a df attribute
             print(f'Top aperture touched by beam 2 between element {elements[0]} and {elements[-1]}.')
             self.touched_top_elements_b2 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
 
+        # If beam 1 touched the bottom aperture
         if touched_bottom_b1.any():
+
+            # Find the elements touched, their locations, and distance from the nominal
             elements = merged_b1[touched_bottom_b1]['name'].tolist()
             s = merged_b1[touched_bottom_b1]['s'].tolist()
             d = merged_b1[touched_bottom_b1]['from_nom_to_bottom'].tolist()
             if plane == 'h': x = merged_b1[touched_bottom_b1]['x_down'].tolist()
             elif plane == 'v': x = merged_b1[touched_bottom_b1]['y_down'].tolist()
 
+            # Mark where the aperture was touched on the plot
             trace_bottom_b1 = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), customdata=d, hovertemplate = hover_template)
             fig.add_trace(trace_bottom_b1, row=2, col=1)
+            # Print where the aperture was touched and store it in a df attribute
             print(f'Bottom aperture touched by beam 1 between element {elements[0]} and {elements[-1]}.')
             self.touched_bottom_elements_b1 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
 
+        # If beam 2 touched the bottom aperture
         if touched_bottom_b2.any():
+            
+            # Find the elements touched, their locations, and distance from the nominal
             elements = merged_b2[touched_bottom_b2]['name'].tolist()
             s = merged_b2[touched_bottom_b2]['s'].tolist()
             d = merged_b2[touched_bottom_b2]['from_nom_to_bottom'].tolist()
             if plane == 'h': x = merged_b2[touched_bottom_b2]['x_down'].tolist()
             elif plane == 'v': x = merged_b2[touched_bottom_b2]['y_down'].tolist()
 
+            # Mark where the aperture was touched on the plot
             trace_bottom_b2 = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), customdata=d, hovertemplate = hover_template)
             fig.add_trace(trace_bottom_b2, row=2, col=1)
+            # Print where the aperture was touched and store it in a df attribute
             print(f'Bottom aperture touched by beam 2 between element {elements[0]} and {elements[-1]}.')
             self.touched_bottom_elements_b2 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
 
+        # If aperture was not touched
         if not (touched_top_b1.any() or touched_bottom_b1.any() or touched_top_b2.any() or touched_bottom_b2.any()):
-            # Find minimum
             print('Aperture not touched.')
 
     def change_crossing_angle(self, ip, angle, plane = 'h'):
@@ -409,58 +446,69 @@ class AperPlot:
              show_both_beams = True,
              show_collimators = True):
         
+        #TODO simplify
+
         # Create figure
         fig = make_subplots(rows=2, cols=1, row_heights=[0.2, 0.8], shared_xaxes=True)
         
         if plane == 'h':
             
+            # Aperture
             top_aper_b1 = go.Scatter(x=self.aper_b1.S, y=self.aper_b1.APER_1, mode='lines', line=dict(color='gray'), name='Aperture')
             bottom_aper_b1 = go.Scatter(x=self.aper_b1.S, y=-self.aper_b1.APER_1, mode='lines', line=dict(color='gray'), name='Aperture')     
             top_aper_b2 = go.Scatter(x=self.aper_b2.S, y=self.aper_b2.APER_1, mode='lines', line=dict(color='gray'), name='Aperture')
             bottom_aper_b2 = go.Scatter(x=self.aper_b2.S, y=-self.aper_b2.APER_1, mode='lines', line=dict(color='gray'), name='Aperture') 
 
+            # Beam positions and nominal beam positions
             b1 = go.Scatter(x=self.tw_b1.s, y=self.tw_b1.x, mode='lines', line=dict(color='blue'), name='Beam 1')
             b2 = go.Scatter(x=self.tw_b2.s, y=self.tw_b2.x, mode='lines', line=dict(color='red'), name='Beam 2')
             nom_b1 = go.Scatter(x=self.nom_b1.s, y=self.nom_b1.x, mode='lines', line=dict(color='blue', dash='dash'), name='Beam 1')
             nom_b2 = go.Scatter(x=self.nom_b2.s, y=self.nom_b2.x, mode='lines', line=dict(color='red', dash='dash'), name='Beam 2')
             
+            # Envelopes
             up_b1 = self.tw_b1.x_up
             down_b1 = self.tw_b1.x_down
             up_b2 = self.tw_b2.x_up
             down_b2 = self.tw_b2.x_down
             
+            # Axes range and title
             fig.update_yaxes(range=[-0.05, 0.05], title_text="x [m]", row=2, col=1)
             
         elif plane == 'v':
             
+            # Aperture
             top_aper_b1 = go.Scatter(x=self.aper_b1.S, y=self.aper_b1.APER_2, mode='lines', line=dict(color='gray'), name='Aperture')
             bottom_aper_b1 = go.Scatter(x=self.aper_b1.S, y=-self.aper_b1.APER_2, mode='lines', line=dict(color='gray'), name='Aperture')
             top_aper_b2 = go.Scatter(x=self.aper_b2.S, y=self.aper_b2.APER_2, mode='lines', line=dict(color='gray'), name='Aperture')
             bottom_aper_b2 = go.Scatter(x=self.aper_b2.S, y=-self.aper_b2.APER_2, mode='lines', line=dict(color='gray'), name='Aperture') 
             
+            # Beam positions and nominal beam positions
             b1 = go.Scatter(x=self.tw_b1.s, y=self.tw_b1.y, mode='lines', line=dict(color='blue'), name='Beam 1')
             b2 = go.Scatter(x=self.tw_b2.s, y=self.tw_b2.y, mode='lines', line=dict(color='red'),name='Beam 2')
-            # TODO sometimes the beams are upside down????????????
             nom_b1 = go.Scatter(x=self.nom_b1.s, y=self.nom_b1.y, mode='lines', line=dict(color='blue', dash='dash'), name='Beam 1')
             nom_b2 = go.Scatter(x=self.nom_b2.s, y=self.nom_b2.y, mode='lines', line=dict(color='red', dash='dash'), name='Beam 2')
             
+            # Envelopes
             up_b1 = self.tw_b1.y_up
             down_b1 = self.tw_b1.y_down
             up_b2 = self.tw_b2.y_up
             down_b2 = self.tw_b2.y_down
 
+            # Axes range and title
             fig.update_yaxes(range=[-0.05, 0.05], title_text="y [m]", row=2, col=1)
 
         else: print('Incorrect plane')
 
+        # Beam 1 envelopes
         upper_b1 = go.Scatter(x=self.tw_b1.s, y=up_b1, mode='lines', name='Upper envelope beam 1', fill=None, line=dict(color='rgba(0,0,255,0)'))
         lower_b1 = go.Scatter(x=self.tw_b1.s, y=down_b1, mode='lines', name='Lower envelope beam 1', line=dict(color='rgba(0,0,255,0)'), 
                           fill='tonexty', fillcolor='rgba(0,0,255,0.1)')
-
+        # Beam 2 enveloped
         upper_b2 = go.Scatter(x=self.tw_b2.s, y=up_b2, mode='lines', name='Upper envelope beam 2', fill=None, line=dict(color='rgba(255,0,0,0)'))
         lower_b2 = go.Scatter(x=self.tw_b2.s, y=down_b2, mode='lines', name='Lower envelope beam 2', line=dict(color='rgba(255,0,0,0)'), 
                            fill='tonexty', fillcolor='rgba(255,0,0,0.1)')
 
+        # List of traces to be added to the graph
         traces_b1 = [b1, nom_b1, upper_b1, lower_b1]
         traces_b2 = [b2, nom_b2, upper_b2, lower_b2]
         
