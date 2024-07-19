@@ -14,7 +14,6 @@ import xtrack as xt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from aper_package.utils import shift_and_redefine
 from aper_package.utils import shift_by
 
 class AperPlot:
@@ -131,6 +130,11 @@ class AperPlot:
 
     def _define_sigma(self):
 
+        # Ensure tw_b1 is not a slice
+        self.tw_b1 = self.tw_b1.copy()
+        self.tw_b2 = self.tw_b2.copy()
+
+        # Add columns for horizontal and vertical sigma
         self.tw_b1.loc[:, 'sigma_x'] = np.sqrt(self.tw_b1['betx'] * self.emitt / self.gamma)
         self.tw_b1.loc[:, 'sigma_y'] = np.sqrt(self.tw_b1['bety'] * self.emitt / self.gamma)
 
@@ -140,6 +144,10 @@ class AperPlot:
     def envelope(self, n):
 
         self.n = n
+
+        # Ensure tw_b1 is not a slice
+        self.tw_b1 = self.tw_b1.copy()
+        self.tw_b2 = self.tw_b2.copy()
         
         # Recalculate the envelope edges for the new envelope size
         self.tw_b1.loc[:, 'x_up'] = self.tw_b1['x'] + n * self.tw_b1['sigma_x']
@@ -365,8 +373,7 @@ class AperPlot:
                                       customdata=d, hovertemplate = hover_template)
                 fig.add_trace(trace_top_b2, row=2, col=1)
 
-            # Print where the aperture was touched and store it in a df attribute
-            print(f'Top aperture touched by beam 2 between element {elements[0]} and {elements[-1]}.')
+            # Keep the elements where the aperture was touched as an attribute
             self.touched_top_elements_b2 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
 
         # If beam 1 touched the bottom aperture
@@ -385,8 +392,7 @@ class AperPlot:
                                          customdata=d, hovertemplate = hover_template)
                 fig.add_trace(trace_bottom_b1, row=2, col=1)
 
-            # Print where the aperture was touched and store it in a df attribute
-            print(f'Bottom aperture touched by beam 1 between element {elements[0]} and {elements[-1]}.')
+            # Keep the elements where the aperture was touched as an attribute
             self.touched_bottom_elements_b1 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
 
         # If beam 2 touched the bottom aperture
@@ -405,8 +411,7 @@ class AperPlot:
                                          customdata=d, hovertemplate = hover_template)
                 fig.add_trace(trace_bottom_b2, row=2, col=1)
 
-            # Print where the aperture was touched and store it in a df attribute
-            print(f'Bottom aperture touched by beam 2 between element {elements[0]} and {elements[-1]}.')
+            # Keep the elements where the aperture was touched as an attribute
             self.touched_bottom_elements_b2 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
 
         # If aperture was not touched
@@ -444,7 +449,7 @@ class AperPlot:
         elif ip == 'ip2':
             if plane == 'v':
                 self.line_b1.vars['on_sep2v'] = value
-                self.line_b2.vars['on_sep2v'] = -value #vertical sign should be inversed????????
+                self.line_b2.vars['on_sep2v'] = value
             elif plane == 'h':
                 self.line_b1.vars['on_sep2h'] = value
                 self.line_b2.vars['on_sep2h'] = value
@@ -454,7 +459,7 @@ class AperPlot:
         elif ip == 'ip8':
             if plane == 'v':
                 self.line_b1.vars['on_sep8v'] = value
-                self.line_b2.vars['on_sep8v'] = -value
+                self.line_b2.vars['on_sep8v'] = value
             elif plane == 'h':
                 self.line_b1.vars['on_sep8h'] = value
                 self.line_b2.vars['on_sep8h'] = value
@@ -557,9 +562,9 @@ class AperPlot:
         fig.update_layout(height=800, width=800, plot_bgcolor='white', showlegend=False)
 
         # Change the axes limits and labels
-        fig.update_yaxes(range=[-1, 1], row=1, col=1, showticklabels=False, showline=False)
+        fig.update_yaxes(range=[-1, 1], showticklabels=False, showline=False, row=1, col=1)
+        fig.update_xaxes(showticklabels=False, showline=False, row=1, col=1)
         fig.update_xaxes(title_text="s [m]", row=2, col=1)
-        fig.update_xaxes(row=1, col=1, showticklabels=False, showline=False)
 
         fig.show()
         
