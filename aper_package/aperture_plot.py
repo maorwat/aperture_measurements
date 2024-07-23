@@ -13,44 +13,39 @@ import xtrack as xt
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import ipywidgets as widgets
-from IPython.display import display
 
 from aper_package.utils import shift_by
+from aper_package.utils import select_file
 
 class AperPlot:
     
     #TODO define all the arguments as optional or not
     def __init__(self,
-                 ip = 'ip5',
+                 ip,
                  n = 0,
-                 emitt = 3.5e-6,
-                 path1 = "/eos/user/m/morwat/aperture_measurements/madx/2023/all_optics_B1.tfs", 
-                 path2 = "/eos/user/m/morwat/aperture_measurements/madx/2023/all_optics_B4.tfs",
-                 line1 = '/eos/user/m/morwat/aperture_measurements/madx/2023/xsuite/Martas_injection_b1.json',
-                 line2 = '/eos/user/m/morwat/aperture_measurements/madx/2023/xsuite/Martas_injection_b2.json',
-                 machine_components_path = '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/all_optics_B1.tfs',
-                 collimators_path = '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
+                 emitt = 3.5e-6):
         
         # Define necessary variables
         self.emitt = emitt
         self.n = n
         self.ip = ip
 
-        self.machine_components_path = machine_components_path
-        self.collimators_path = collimators_path   
+        # Select the aperture files
+        path1 = select_file('Select all_optics_B1.tfs', '/eos/user/m/morwat/aperture_measurements/madx/2023/')
+        path2 = select_file('Select all_optics_B4.tfs', '/eos/user/m/morwat/aperture_measurements/madx/2023/')
 
         # Drop uneeded columns
         df_b1 = tfs.read(path1)[['S', 'NAME', 'APER_1', 'APER_2']]
         df_b2 = tfs.read(path2)[['S', 'NAME', 'APER_1', 'APER_2']]
 
+        # Find length of the collider
         self.length = df_b1.S.iloc[-1]
 
         # Drop duplicates
         df_b1.drop_duplicates(subset=['S'])
         df_b2.drop_duplicates(subset=['S'])
         
-        # Get rid of undefined and unnecessary values
+        # Get rid of undefined values
         self.aper_b1 = df_b1[(df_b1['APER_1'] < 1) & (df_b1['APER_1'] != 0) & (df_b1['APER_2'] < 1) & (df_b1['APER_2'] != 0)]
         self.aper_b2 = df_b2[(df_b2['APER_1'] < 1) & (df_b2['APER_1'] != 0) & (df_b2['APER_2'] < 1) & (df_b2['APER_2'] != 0)]
         
@@ -58,6 +53,9 @@ class AperPlot:
         if self.ip == 'ip1':
             self.aper_b1 = shift_by(self.aper_b1, self.length/2, 'S')
             self.aper_b2 = shift_by(self.aper_b2, self.length/2, 'S')
+
+        line1 = select_file('Select json file for b1', '/eos/user/m/morwat/aperture_measurements/madx/2023/xsuite/')
+        line2 = select_file('Select json file for b2', '/eos/user/m/morwat/aperture_measurements/madx/2023/xsuite/')
 
         # Load a line and build tracker
         self.line_b1 = xt.Line.from_json(line1)
@@ -68,6 +66,8 @@ class AperPlot:
 
         # Twiss
         self.twiss()
+
+        # Align the IP of interest for both beams
         self.aper_b2 = shift_by(self.aper_b2, self.ip_diff, 'S')
 
         # Keep the nominal crossing seperately for calculations
@@ -100,7 +100,7 @@ class AperPlot:
             self.tw_b1 = shift_by(self.tw_b1, self.length/2, 's')
             self.tw_b2 = shift_by(self.tw_b2, self.length/2, 's')
 
-        # Align the IPs of interest for both beams
+        # Align the IP of interest for both beams
         self.ip_diff = self.tw_b1.loc[self.tw_b1['name'] == self.ip, 's'].values[0]-self.tw_b2.loc[self.tw_b2['name'] == self.ip, 's'].values[0]
         self.tw_b2 = shift_by(self.tw_b2, self.ip_diff, 's')
 
@@ -110,6 +110,7 @@ class AperPlot:
 
     def change_ip(self, ip):
 
+        # IP to be visualised
         self.ip = ip
 
         # Align the IPs of interest for both beams
@@ -144,6 +145,7 @@ class AperPlot:
 
     def envelope(self, n):
 
+        # Envelope size in sigma units
         self.n = n
 
         # Ensure tw_b1 is not a slice
@@ -164,20 +166,25 @@ class AperPlot:
     def _add_collimators(self, fig, plane, row, column):
 
         # Load the file
-        with open(self.collimators_path, 'r') as file:
+        collimators_path = select_file('Select collimators .yaml file', '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/')
+        with open(collimators_path, 'r') as file:
             f = yaml.safe_load(file)
 
         def get_df(angle, beam, twiss_data, sigma_key, x_key):
 
+            # Create a pandas data frame with only gap and angle
             col = pd.DataFrame(f['collimators'][beam]).loc[['gap', 'angle']].T
-            col = col[col['angle'] == angle].dropna()
             col = col.reset_index().rename(columns={'index': 'name'})
+            # Drop undefined values
+            col = col[col['angle'] == angle].dropna()
+            # Merge with twiss data to find collimator positions
             col = pd.merge(col, twiss_data, on='name', how='left')
 
-            # Calculate gap in meters
+            # Calculate gap in meters and add to the dataFrame
             col.loc[:, 'top_gap_col'] = col[sigma_key] * col['gap'] + col[x_key]
             col.loc[:, 'bottom_gap_col'] = -col[sigma_key] * col['gap'] + col[x_key]
 
+            # Return the collimators data
             return col
         
         # Create the DataFrames
@@ -187,6 +194,7 @@ class AperPlot:
         dfx_b2 = get_df(0, 'b2', self.tw_b2, 'sigma_x', 'x')
         dfy_b2 = get_df(90, 'b2', self.tw_b2, 'sigma_y', 'y')
   
+        # Create empty arrays to store visibility conditions
         arr_b1 = np.array([], dtype=bool)
         arr_b2 = np.array([], dtype=bool)
 
@@ -199,7 +207,8 @@ class AperPlot:
                                 fillcolor='black', line=dict(color='black'), name=dfx_b1.name.iloc[i]), row=2, col=1)
                 fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0b, -y1, -y1, y0b], fill="toself", mode='lines',
                                 fillcolor='black', line=dict(color='black'), name=dfx_b1.name.iloc[i]), row=2, col=1)
-                    
+
+            # As default show only beam 1 collimators      
             arr_b1 = np.append(arr_b1, np.full(dfx_b1.shape[0]*2, True))
   
             for i in range(dfx_b2.shape[0]):
@@ -208,7 +217,8 @@ class AperPlot:
                                 fillcolor='black', line=dict(color='black'), name=dfx_b2.name.iloc[i]), row=2, col=1)
                 fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0b, -y1, -y1, y0b], fill="toself", mode='lines',
                                 fillcolor='black', line=dict(color='black'), name=dfx_b2.name.iloc[i]), row=2, col=1)
-                
+            
+            # As default don't show beam 2 collimators 
             arr_b2 = np.append(arr_b2, np.full(dfx_b2.shape[0]*2, False))
 
         if plane == 'v':
@@ -219,7 +229,8 @@ class AperPlot:
                                 fillcolor='black', line=dict(color='black'), name=dfy_b1.name.iloc[i]), row=2, col=1)
                 fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0b, -y1, -y1, y0b], fill="toself", mode='lines',
                                 fillcolor='black', line=dict(color='black'), name=dfy_b1.name.iloc[i]), row=2, col=1)
-                    
+
+            # As default show only beam 1 collimators        
             arr_b1 = np.append(arr_b1, np.full(dfy_b1.shape[0]*2, True))
 
             for i in range(dfy_b2.shape[0]):
@@ -228,9 +239,11 @@ class AperPlot:
                                 fillcolor='black', line=dict(color='black'), name=dfy_b2.name.iloc[i]), row=2, col=1)
                 fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0b, -y1, -y1, y0b], fill="toself", mode='lines',
                                 fillcolor='black', line=dict(color='black'), name=dfy_b2.name.iloc[i]), row=2, col=1)
-                    
+            
+            # As default don't show beam 2 collimators        
             arr_b2 = np.append(arr_b2, np.full(dfy_b2.shape[0]*2, False))
 
+        # Merge beam 1 and beam 2 visibility conditions
         visibility_arr_b1 = np.concatenate((arr_b1, arr_b2))
 
         return visibility_arr_b1
@@ -238,7 +251,8 @@ class AperPlot:
     def _add_machine_components(self, fig, row, column):
         
         # Load the file
-        df = tfs.read(self.machine_components_path)
+        machine_components_path = select_file('Select thick all_optics.tfs file', '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/')
+        df = tfs.read(machine_components_path)
 
         # Shift if IP1
         if self.ip == 'ip1': df = shift_by(df, self.length/2, 'S')
@@ -247,6 +261,7 @@ class AperPlot:
         objects = ["SBEND", "COLLIMATOR", "SEXTUPOLE", "RBEND", "QUADRUPOLE"]
         colors = ['lightblue', 'black', 'hotpink', 'green', 'red']
 
+        # Array to store visibility of the elements
         visibility_arr = np.array([], dtype=bool)
 
         # Iterate over all object types
@@ -264,6 +279,7 @@ class AperPlot:
                 fig.add_trace(go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], fill="toself", mode='lines',
                              fillcolor=colors[n], line=dict(color=colors[n]), name=obj_df.iloc[i]['NAME']), row=row, col=column) 
 
+            # Append to always show the elements
             visibility_arr = np.append(visibility_arr, np.full(obj_df.shape[0], True))
         
         return visibility_arr
@@ -281,45 +297,26 @@ class AperPlot:
         merged_b1 = pd.merge_asof(merged_b1, nom_b1, left_on='s', right_on='s', direction='nearest', tolerance=0.00001)
         merged_b2 = pd.merge_asof(merged_b2, nom_b2, left_on='s', right_on='s', direction='nearest', tolerance=0.00001)
 
-        # Drop all the rows with NaNs
-        merged_b1 = merged_b1.dropna()
-        merged_b2 = merged_b2.dropna()
+        # Drop all the rows with NaNs and repeat columns
+        merged_b1 = merged_b1.dropna().drop(columns=['S', 'NAME'])
+        merged_b2 = merged_b2.dropna().drop(columns=['S', 'NAME'])
 
-        # Drop repeat columns
-        merged_b1 = merged_b1.drop(columns=['S', 'NAME'])
-        merged_b2 = merged_b2.drop(columns=['S', 'NAME'])
+        if plane == 'h': up, down, nom, aper = 'x_up', 'x_down', 'nom_x', 'APER_1'
+        elif plane == 'v': up, down, nom, aper = 'y_up', 'y_down', 'nom_y', 'APER_2'
 
-        if plane == 'h':
+        # Calculate distance from the envelope to the nominal beam
+        merged_b1['from_nom_to_top'] = (merged_b1[up] - merged_b1[nom])*1000
+        merged_b2['from_nom_to_top'] = (merged_b2[up] - merged_b2[nom])*1000
 
-            # Calculate distance from the envelope to the nominal beam
-            merged_b1['from_nom_to_top'] = (merged_b1['x_up'] - merged_b1['nom_x'])*1000
-            merged_b2['from_nom_to_top'] = (merged_b2['x_up'] - merged_b2['nom_x'])*1000
+        merged_b1['from_nom_to_bottom'] = (-merged_b1[down] + merged_b1[nom])*1000
+        merged_b2['from_nom_to_bottom'] = (-merged_b2[down] + merged_b2[nom])*1000
 
-            merged_b1['from_nom_to_bottom'] = (-merged_b1['x_down'] + merged_b1['nom_x'])*1000
-            merged_b2['from_nom_to_bottom'] = (-merged_b2['x_down'] + merged_b2['nom_x'])*1000
+        # Calculate distance from the envelope to the aperture
+        merged_b1['from_top_to_aper'] = merged_b1[aper] - merged_b1[up]
+        merged_b2['from_top_to_aper'] = merged_b2[aper] - merged_b2[up]
 
-            # Calculate distance from the envelope to the aperture
-            merged_b1['from_top_to_aper'] = merged_b1['APER_1'] - merged_b1['x_up']
-            merged_b2['from_top_to_aper'] = merged_b2['APER_1'] - merged_b2['x_up']
-
-            merged_b1['from_bottom_to_aper'] = merged_b1['x_down'] + merged_b1['APER_1']
-            merged_b2['from_bottom_to_aper'] = merged_b2['x_down'] + merged_b2['APER_1']
-
-        elif plane == 'v':
-
-            # Calculate distance from the envelope to the nominal beam
-            merged_b1['from_nom_to_top'] = (merged_b1['y_up'] - merged_b1['nom_y'])*1000
-            merged_b2['from_nom_to_top'] = (merged_b2['y_up'] - merged_b2['nom_y'])*1000
-
-            merged_b1['from_nom_to_bottom'] = (-merged_b1['y_down'] + merged_b1['nom_y'])*1000
-            merged_b2['from_nom_to_bottom'] = (-merged_b2['y_down'] + merged_b2['nom_y'])*1000
-
-            # Calculate distance from the envelope to the aperture
-            merged_b1['from_top_to_aper'] = merged_b1['APER_2'] - merged_b1['y_up']
-            merged_b2['from_top_to_aper'] = merged_b2['APER_2'] - merged_b2['y_up']
-
-            merged_b1['from_bottom_to_aper'] = merged_b1['y_down'] + merged_b1['APER_2']
-            merged_b2['from_bottom_to_aper'] = merged_b2['y_down'] + merged_b2['APER_2']
+        merged_b1['from_bottom_to_aper'] = merged_b1[down] + merged_b1[aper]
+        merged_b2['from_bottom_to_aper'] = merged_b2[down] + merged_b2[aper]
 
         # Check if the envelope touched the aperture
         touched_top_b1 = (merged_b1['from_top_to_aper'] < 0)
@@ -331,90 +328,43 @@ class AperPlot:
         # Define hover template with customdata
         hover_template = ("s: %{x} [m]<br>"
                             "x: %{y} [m]<br>"
-                            "name: %{text}<br>"
+                            "element: %{text}<br>"
                             "distance from nominal: %{customdata} [mm]")
         
+        # Visibility of the touched aperture
         visibility_arr_b1 = np.array([], dtype=bool)
 
-        # If beam 1 touched the top aperture
-        if touched_top_b1.any():
+        def add_touched_aper(touched, merged, aper, plane, visible, visibility_arr_b1):
 
-            # Find the elements touched, their locations, and distance from the nominal
-            elements = merged_b1[touched_top_b1]['name'].tolist()
-            s = merged_b1[touched_top_b1]['s'].tolist()
-            d = merged_b1[touched_top_b1]['from_nom_to_top'].tolist()
-            if plane == 'h': x = merged_b1[touched_top_b1]['x_up'].tolist()
-            elif plane == 'v': x = merged_b1[touched_top_b1]['y_up'].tolist()
+            if touched.any():
+                # Find the elements touched, their locations, and distance from the nominal
+                elements = merged[touched]['name'].tolist()
+                s = merged[touched]['s'].tolist()
+                d = merged[touched][f'from_nom_to_{aper}'].tolist()
+                if plane == 'h': 
+                    if aper == 'top': x = merged[touched]['x_up'].tolist()
+                    elif aper == 'bottom': x = merged[touched]['x_down'].tolist()
+                elif plane == 'v':
+                    if aper == 'top': x = merged[touched]['y_up'].tolist()
+                    elif aper == 'bottom': x = merged[touched]['y_down'].tolist()
 
-            # Mark where the aperture was touched on the plot
-            trace_top_b1 = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), text=elements, name = 'Touched aperture b1',
-                                      customdata=d, hovertemplate = hover_template)
-            fig.add_trace(trace_top_b1, row=2, col=1)
+                # Mark where the aperture was touched on the plot
+                trace = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), text=elements, name = 'Touched aperture',
+                                    customdata=d, hovertemplate = hover_template)
+                fig.add_trace(trace, row=2, col=1)
 
-            # Keep the elements where the aperture was touched as an attribute
-            self.touched_top_elements_b1 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
+                # Keep the elements where the aperture was touched as an attribute
+                setattr(self, f'{touched}', pd.DataFrame({'element': elements, 'distance_from_nominal': d}))
 
-            visibility_arr_b1 = np.append(visibility_arr_b1, True)
+                # As default always show the aperture touched by beam 1
+                visibility_arr_b1 = np.append(visibility_arr_b1, visible)
 
-        # If beam 1 touched the bottom aperture
-        if touched_bottom_b1.any():
+            return visibility_arr_b1
 
-            # Find the elements touched, their locations, and distance from the nominal
-            elements = merged_b1[touched_bottom_b1]['name'].tolist()
-            s = merged_b1[touched_bottom_b1]['s'].tolist()
-            d = merged_b1[touched_bottom_b1]['from_nom_to_bottom'].tolist()
-            if plane == 'h': x = merged_b1[touched_bottom_b1]['x_down'].tolist()
-            elif plane == 'v': x = merged_b1[touched_bottom_b1]['y_down'].tolist()
-
-            # Mark where the aperture was touched on the plot
-            trace_bottom_b1 = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), text=elements, name = 'Touched aperture b1',
-                                         customdata=d, hovertemplate = hover_template)
-            fig.add_trace(trace_bottom_b1, row=2, col=1)
-
-            # Keep the elements where the aperture was touched as an attribute
-            self.touched_bottom_elements_b1 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
-
-            visibility_arr_b1 = np.append(visibility_arr_b1, True)
-        
-        # If beam 2 touched the top aperture
-        if touched_top_b2.any():
-
-            # Find the elements touched, their locations, and distance from the nominal
-            elements = merged_b2[touched_top_b2]['name'].tolist()
-            s = merged_b2[touched_top_b2]['s'].tolist()
-            d = merged_b2[touched_top_b2]['from_nom_to_top'].tolist()
-            if plane == 'h': x = merged_b2[touched_top_b2]['x_up'].tolist()
-            elif plane == 'v': x = merged_b2[touched_top_b2]['y_up'].tolist()
-
-            # Mark where the aperture was touched on the plot
-            trace_top_b2 = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), text=elements, name = 'Touched aperture b2',
-                                      customdata=d, hovertemplate = hover_template)
-            fig.add_trace(trace_top_b2, row=2, col=1)
-
-            # Keep the elements where the aperture was touched as an attribute
-            self.touched_top_elements_b2 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
-
-            visibility_arr_b1 = np.append(visibility_arr_b1, False)
-
-        # If beam 2 touched the bottom aperture
-        if touched_bottom_b2.any():
-            
-            # Find the elements touched, their locations, and distance from the nominal
-            elements = merged_b2[touched_bottom_b2]['name'].tolist()
-            s = merged_b2[touched_bottom_b2]['s'].tolist()
-            d = merged_b2[touched_bottom_b2]['from_nom_to_bottom'].tolist()
-            if plane == 'h': x = merged_b2[touched_bottom_b2]['x_down'].tolist()
-            elif plane == 'v': x = merged_b2[touched_bottom_b2]['y_down'].tolist()
-
-            # Mark where the aperture was touched on the plot
-            trace_bottom_b2 = go.Scatter(x=s, y=x, mode='markers', marker=dict(color='orange'), text=elements, name = 'Touched aperture b2',
-                                         customdata=d, hovertemplate = hover_template)
-            fig.add_trace(trace_bottom_b2, row=2, col=1)
-
-            # Keep the elements where the aperture was touched as an attribute
-            self.touched_bottom_elements_b2 = pd.DataFrame({'element': elements, 'distance_from_nominal': d})
-
-            visibility_arr_b1 = np.append(visibility_arr_b1, False)
+        visibility_arr_b1 = add_touched_aper(touched_bottom_b1, merged_b1, 'bottom', plane, True, visibility_arr_b1)
+        visibility_arr_b1 = add_touched_aper(touched_top_b1, merged_b1, 'top', plane, True, visibility_arr_b1)
+        visibility_arr_b1 = add_touched_aper(touched_bottom_b2, merged_b2, 'bottom', plane, False, visibility_arr_b1)
+        visibility_arr_b1 = add_touched_aper(touched_top_b2, merged_b2, 'top', plane, False, visibility_arr_b1)
 
         # If aperture was not touched
         if not (touched_top_b1.any() or touched_bottom_b1.any() or touched_top_b2.any() or touched_bottom_b2.any()):
@@ -563,7 +513,7 @@ class AperPlot:
         visibility_b1 = np.concatenate((visibility_beams, visibility_aper_b1, visibility_col_b1, visibility_touched_b1, visibility_elements))
         visibility_b2 = np.concatenate((visibility_beams, np.logical_not(visibility_aper_b1), np.logical_not(visibility_col_b1), np.logical_not(visibility_touched_b1), visibility_elements))
 
-        # Define buttons to toggle visibility
+        # Define buttons to toggle aperture and collimator data
         buttons = [
             dict(
                 label="Beam 1",

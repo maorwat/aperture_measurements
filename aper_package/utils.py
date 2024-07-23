@@ -1,16 +1,7 @@
 from ipyfilechooser import FileChooser
 import pandas as pd
-
-def select_file(initial_path='/eos/project-c/collimation-team/machine_configurations'):
-    file_chooser = FileChooser(initial_path)
-    display(file_chooser)
-    
-    def on_selection_change(change):
-        if file_chooser.selected:
-            print(f"Selected file: {file_chooser.selected}")
-
-    file_chooser.register_callback(on_selection_change)
-    return file_chooser
+import tkinter as tk
+from tkinter import filedialog
 
 def shift_by(df, by, s):
     """
@@ -34,3 +25,10 @@ def shift_by(df, by, s):
     df = df.reset_index(drop=True)
 
     return df
+
+def select_file(title, initial_path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/'):
+    
+    root = tk.Tk()
+    root.withdraw()  # Hide the root window
+    file_path = filedialog.askopenfilename(initialdir=initial_path, title=title)
+    return file_path
