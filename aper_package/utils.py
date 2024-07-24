@@ -1,7 +1,7 @@
-from ipyfilechooser import FileChooser
 import pandas as pd
 import tkinter as tk
 from tkinter import filedialog
+import os
 
 def shift_by(df, by, s):
     """
@@ -26,9 +26,19 @@ def shift_by(df, by, s):
 
     return df
 
-def select_file(title, initial_path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/'):
+def select_file(path, title, initial_path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/'):
+
+    # If path provided use it
+    if path:
+        file_path = path
+    # If no display environment available (SWAN)
+    elif not os.getenv('DISPLAY'):
+        print(f"No display found. Please manually provide the path for {title} or provide tha path as an argument.")
+        return input(f"Enter path for {title}: ")
+    # Else ask to select a file
+    else:
+        root = tk.Tk()
+        root.withdraw()  # Hide the root window
+        file_path = filedialog.askopenfilename(initialdir=initial_path, title=f'Select {title}')
     
-    root = tk.Tk()
-    root.withdraw()  # Hide the root window
-    file_path = filedialog.askopenfilename(initialdir=initial_path, title=title)
     return file_path
