@@ -109,6 +109,9 @@ def plot(data, plane, add_VELO=True):
     # Add annotation
     fig.update_layout(annotations=[dict(text="Aperture data:", showarrow=False, 
                     x=0, y=1.075, xref="paper", yref='paper', align="left")])
+    
+    # Update the x-axis and y-axis tick format
+    fig.update_layout(xaxis=dict(tickformat=','), yaxis=dict(tickformat=','))
         
     fig.show()
 

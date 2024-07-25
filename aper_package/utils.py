@@ -42,3 +42,21 @@ def select_file(path, title, initial_path='/eos/project-c/collimation-team/machi
         file_path = filedialog.askopenfilename(initialdir=initial_path, title=f'Select {title}')
     
     return file_path
+
+def match_with_twiss(twiss, aper_to_match):
+
+    # Convert the 'NAME' column to lowercase to match the 'name' column in df_correct
+    aper_to_match['name'] = aper_to_match['NAME'].str.lower()
+
+    # Merge the dataframes son the 'name' column
+    df_merged = aper_to_match.merge(twiss[['name', 's']], on='name', how='left')
+
+    df_merged = df_merged.drop(columns=['name', 'S'])
+
+    # Update the 'S' column in df_incorrect with the 's' values from df_correct
+    df_merged.rename(columns={'s':'S'}, inplace=True)
+
+    df_merged = df_merged.sort_values(by='S').dropna()
+    df_merged = df_merged.reset_index(drop=True)
+
+    return df_merged

@@ -16,6 +16,7 @@ from plotly.subplots import make_subplots
 
 from aper_package.utils import shift_by
 from aper_package.utils import select_file
+from aper_package.utils import match_with_twiss
 
 class Data:
     
@@ -79,8 +80,9 @@ class Data:
             # Get rid of undefined values
             df1 = df1[(df1['APER_1'] < 0.2) & (df1['APER_1'] != 0) & (df1['APER_2'] < 0.2) & (df1['APER_2'] != 0)]
             df2 = df2[(df2['APER_1'] < 0.2) & (df2['APER_1'] != 0) & (df2['APER_2'] < 0.2) & (df2['APER_2'] != 0)]
-            #Reverse S and X for beam 2
-            df2.loc[:, 'S'] = df2['S'].iloc[-1]-df2['S']
+            # Make sure the aperture aligns with twiss data (if cycling was performed)
+            df1 = match_with_twiss(self.tw_b1, df1)
+            df2 = match_with_twiss(self.tw_b2, df2)
         except FileNotFoundError:
             raise FileNotFoundError(f"File {path1} not found.")
         return df1.drop_duplicates(subset=['S']), df2.drop_duplicates(subset=['S'])
@@ -99,6 +101,13 @@ class Data:
         # Process the twiss DataFrames
         self.tw_b1 = self._process_twiss(tw_b1)
         self.tw_b2 = self._process_twiss(tw_b2)
+
+        # Check if the data had been cycled
+        if hasattr(self, 'first_element'):
+            # Find how much to shift the data
+            shift = self._get_shift()
+            self.tw_b1 = shift_by(self.tw_b1, shift, 's')
+            self.tw_b2 = shift_by(self.tw_b2, shift, 's')
 
         # Define attributes
         self._define_sigma()
@@ -124,10 +133,39 @@ class Data:
 
         # Select necessary columns
         return twiss_df[['s', 'name', 'x', 'y', 'betx', 'bety']]
+    
+    def _get_shift(self):
+        # Find the element to be set as the new zero
+        element_position = self.tw_b1.loc[self.tw_b1['name'] == self.first_element, 's'].values[0]
+        # To set to zero, shift to the left
+        shift = -element_position
+        return shift
 
-    def cycle(self, ip):
-        #TODO
-        pass
+    def cycle(self, element):
+        
+        # Save the first element for the case of retwissing
+        self.first_element = element
+        # Find how much to shift the data
+        shift = self._get_shift()
+
+        # Shift all the DataFrames by the same amount
+        self.tw_b1 = shift_by(self.tw_b1, shift, 's')
+        self.tw_b2 = shift_by(self.tw_b2, shift, 's')
+        self.nom_b1 = shift_by(self.nom_b1, shift, 's')
+        self.nom_b2 = shift_by(self.nom_b2, shift, 's')
+
+        if hasattr(self, 'aper_b1'):
+            self.aper_b1 = shift_by(self.aper_b1, shift, 'S')
+            self.aper_b2 = shift_by(self.aper_b2, shift, 'S')
+
+        if hasattr(self, 'colx_b1'):
+            self.colx_b1 = shift_by(self.colx_b1, shift, 's')
+            self.colx_b2 = shift_by(self.colx_b2, shift, 's')
+            self.coly_b1 = shift_by(self.coly_b1, shift, 's')
+            self.coly_b2 = shift_by(self.coly_b2, shift, 's')
+
+        if hasattr(self, 'elements'):
+            self.elements = shift_by(self.elements, shift, 'S')
 
     def _define_nominal_crossing(self):
         """
@@ -235,8 +273,11 @@ class Data:
 
         # Load the file
         machine_components_path = select_file(path, 'thick all_optics.tfs file', '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/')
-        
-        self.elements = tfs.read(machine_components_path)
+        df = tfs.read(machine_components_path)
+
+        # Make sure the elements align with twiss data (if cycling was performed)
+        self.elements = match_with_twiss(self.tw_b1, df)
+    
     
     def change_crossing_angle(self, ip, angle, plane = 'h'):
     
