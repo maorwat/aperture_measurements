@@ -4,13 +4,111 @@ sys.path.append('/eos/home-i03/m/morwat/.local/lib/python3.9/site-packages/')
 import numpy as np
 import pandas as pd
 
-import warnings
-warnings.filterwarnings('ignore')
-
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText
+from IPython.display import display
 
-def plot(data, plane, add_VELO=True):
+def plot(data, plane):
+
+    global knob_dropdown, add_button, remove_button, apply_button, graph_container, knob_box
+    global values, selected_knobs, knob_widgets
+    global aper_data, aper_plane
+
+    aper_data = data
+    aper_plane = plane
+
+    fig, visibility_b1, visibility_b2, row, col = create_figure(data, plane)
+
+    # Dictionary to store multipliers for each option
+    values = {}
+    selected_knobs = []
+    knob_widgets = {}
+
+    # Create a dropdown to toggle aperture and collimator data
+    beam_dropdown = add_beam_dropdown(visibility_b1, visibility_b2)
+
+    # Create a dropdown to select a knob
+    knob_dropdown = add_knob_dropdown()
+
+    # Button to add selection
+    add_button = Button(description="Add", button_style='success')
+    # Button to remove selection
+    remove_button = Button(description="Remove", button_style='danger')
+    # Button to apply selection and update graph
+    apply_button = Button(description="Apply", button_style='primary')
+
+    # Create an empty VBox container for the graph and multiplier widgets
+    graph_container = VBox()
+    knob_box = VBox()
+    
+    # Set initial visibility for the traces
+    for i, trace in enumerate(fig.data):
+        trace.visible = visibility_b1[i]
+
+    # Arrange widgets in a layout
+    controls = HBox([knob_dropdown, add_button, remove_button, apply_button], layout=Layout(justify_content='space-around'))
+
+    # Display the widgets
+    display(VBox([controls, knob_box, graph_container]))
+
+    # Set up event handlers
+    add_button.on_click(on_add_button_clicked)
+    remove_button.on_click(on_remove_button_clicked)
+    apply_button.on_click(on_apply_button_clicked)
+
+    update_graph(aper_data, aper_plane)
+
+# Function to handle adding a selected option
+def on_add_button_clicked(b):
+    knob = knob_dropdown.value
+    if knob and knob not in selected_knobs:
+        selected_knobs.append(knob)
+        values[knob] = 1.0  # Initialize multiplier for new option
+
+        # Create a new FloatText widget for the selected option
+        knob_widget = FloatText(
+            value=1.0,
+            description=f'{knob}',
+            disabled=False
+        )
+        knob_widgets[knob] = knob_widget
+
+        # Update selected options label and display multiplier widgets
+        knob_box.children = [knob_widgets[value] for value in selected_knobs]
+
+# Function to handle removing a selected option
+def on_remove_button_clicked(b):
+    knob = knob_dropdown.value
+    if knob in selected_knobs:
+        selected_knobs.remove(knob)
+        del values[knob]  # Remove multiplier for the option
+        if knob in knob_widgets:
+            del knob_widgets[knob]  # Remove the multiplier widget
+        
+        # Update selected options label and display multiplier widgets
+        knob_box.children = [knob_widgets[value] for value in selected_knobs]
+
+# Function to apply changes and update the graph
+def on_apply_button_clicked(b):
+    # Update multipliers dictionary based on current values in multiplier widgets
+    for knob, widget in knob_widgets.items():
+        aper_data.change_knob(knob, widget.value)
+    
+    aper_data.twiss()
+        
+    update_graph(aper_data, aper_plane)
+
+# Function to update the graph
+def update_graph(data, plane):
+    fig, _, _, row, col = create_figure(data, plane)
+    # Update figure layout
+    update_layout(fig, plane, row, col)
+    fig_widget = go.FigureWidget(fig)
+    graph_container.children = [fig_widget]
+        
+
+def create_figure(data, plane):
 
     # For buttons
     visibility_b1 = np.array([], dtype=bool)
@@ -78,7 +176,9 @@ def plot(data, plane, add_VELO=True):
     visibility_b1 = np.append(visibility_b1, env_vis)
     visibility_b2 = np.append(visibility_b2, env_vis)
 
-    if add_VELO: add_velo(data, fig=fig, row=row, col=col)
+    return fig, visibility_b1, visibility_b2, row, col
+
+def add_beam_dropdown(visibility_b1, visibility_b2):
 
     # Define buttons to toggle aperture and collimator data
     buttons = [
@@ -91,29 +191,37 @@ def plot(data, plane, add_VELO=True):
                 method="update",
                 args=[{"visible": visibility_b2}])]
     
-    # Set initial visibility for the traces
-    for i, trace in enumerate(fig.data):
-        trace.visible = visibility_b1[i]
+    return buttons
+
+def add_knob_dropdown():
+
+    knobs = ['on_x1', 'on_x2h', 'on_x2v', 'on_x5', 'on_x8h', 'on_x8v',
+             'on_sep1', 'on_sep2h', 'on_sep2v', 'on_sep5', 'on_sep8h', 'on_sep8v',
+             'on_alice', 'on_lhcb']
+    
+    # Dropdown widget
+    dropdown_widget = widgets.Dropdown(
+        options=knobs,
+        description='Select knob:',
+        disabled=False)
+    
+    return dropdown_widget
+
+def update_layout(fig, plane, row, col):
 
     # Set layout
-    fig.update_layout(height=800, width=800, plot_bgcolor='white', showlegend=False)
+    #fig.update_layout(height=800, width=1600)
 
     # Change the axes limits and labels
     fig.update_xaxes(title_text="s [m]", row=row, col=col)
-    fig.update_yaxes(range = [-0.05, 0.05], row=row, col=col)
 
-    # Add the buttons to the layout
-    fig.update_layout(updatemenus=[{"buttons": buttons, "showactive": True, 'active': 0, 'pad': {"r": 10, "t": 10},
-                                    'xanchor': "left", 'yanchor': 'top', 'x': 0.15, 'y': 1.1}])
-        
-    # Add annotation
-    fig.update_layout(annotations=[dict(text="Aperture data:", showarrow=False, 
-                    x=0, y=1.075, xref="paper", yref='paper', align="left")])
+    if plane == 'h': title = 'x [m]'
+    elif plane == 'v': title = 'y [m]'
+    fig.update_yaxes(title_text=title, range = [-0.05, 0.05], row=row, col=col)
     
     # Update the x-axis and y-axis tick format
-    fig.update_layout(xaxis=dict(tickformat=','), yaxis=dict(tickformat=','))
-        
-    fig.show()
+    fig.update_layout(xaxis=dict(tickformat=','), yaxis=dict(tickformat=','), plot_bgcolor='white')
+
 
 def machine_components(data):
 

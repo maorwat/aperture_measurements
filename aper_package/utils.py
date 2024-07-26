@@ -3,6 +3,9 @@ import tkinter as tk
 from tkinter import filedialog
 import os
 
+from ipyfilechooser import FileChooser
+from IPython.display import display
+
 def shift_by(df, by, s):
     """
     shifts a graph by a given value
@@ -33,7 +36,7 @@ def select_file(path, title, initial_path='/eos/project-c/collimation-team/machi
         file_path = path
     # If no display environment available (SWAN)
     elif not os.getenv('DISPLAY'):
-        print(f"No display found. Please manually provide the path for {title} or provide tha path as an argument.")
+        print(f"No display found. Please manually provide the path for {title} or provide the path as an argument.")
         return input(f"Enter path for {title}: ")
     # Else ask to select a file
     else:
@@ -60,3 +63,14 @@ def match_with_twiss(twiss, aper_to_match):
     df_merged = df_merged.reset_index(drop=True)
 
     return df_merged
+
+def select_file_in_SWAN(initial_path='/eos/project-c/collimation-team/machine_configurations'):
+    file_chooser = FileChooser(initial_path)
+    display(file_chooser)
+    
+    def on_selection_change(change):
+        if file_chooser.selected:
+            print(f"Selected file: {file_chooser.selected}")
+
+    file_chooser.register_callback(on_selection_change)
+    return file_chooser

@@ -6,34 +6,32 @@ import pandas as pd
 import tfs
 import yaml
 
-import warnings
-warnings.filterwarnings('ignore')
+from typing import Any, Dict, Optional
 
 import xtrack as xt
-
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 from aper_package.utils import shift_by
 from aper_package.utils import select_file
 from aper_package.utils import match_with_twiss
 
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 class Data:
     
     def __init__(self,
-                 n = 0,
-                 emitt = 3.5e-6,
-                 line1 = None):
+                 n: Optional[float] = 0,
+                 emitt: Optional[str] = 3.5e-6,
+                 line1: Optional[str] = None):
         
         """
-        Initialize the AperPlot class with necessary configurations.
+        Initialize the AperData class with necessary configurations.
 
         Parameters:
-        - ip (str): Interaction point.
-        - n (int): An optional parameter, default is 0.
-        - emitt (float): Normalised emittance value, default is 3.5e-6.
-        - path1 (str): Path to the aperture file for beam 1.
-        - line1 (str): Path to the line JSON file for beam 1.
+            ip (str): Interaction point.
+            n: An optional parameter, default is 0.
+            emitt: Normalised emittance value, default is 3.5e-6.
+            line1: Path to the line JSON file for beam 1, default is None, can be selected interactively.
         """
         
         # Define necessary variables
@@ -55,21 +53,36 @@ class Data:
         self._distance_to_nominal('h')
         self._distance_to_nominal('v')
 
-    def _load_lines_data(self, path1, title):
-        """Load line data from a JSON file."""
+    def _load_lines_data(self, path1: str, title: str) -> None:
+        """Load lines data from a JSON file.
+        
+        Parameters:
+            path1: Path to the line JSON file for beam 1.
+            title: Prompt dispolayed upon file selection.
+        """
+        
         path1 = select_file(path1, title, '/eos/user/m/morwat/aperture_measurements/madx/2023/xsuite/')
         path2 = str(path1).replace('b1', 'b2')
+
         try:
             return xt.Line.from_json(path1), xt.Line.from_json(path2)
         except FileNotFoundError:
             raise FileNotFoundError(f"File {path1} not found.")
 
-    def load_aperture(self, path1=None):
+    def load_aperture(self, path1: Optional[str]=None) -> None:
         # Load and process aperture data
         self.aper_b1, self.aper_b2 = self._load_aperture_data(path1, 'Select all_optics_B1.tfs')
     
-    def _load_aperture_data(self, path1, title):
-        """Load and process aperture data from a file."""
+    def _load_aperture_data(self, path1: str, title: str) -> pd.DataFrame:
+        """Load and process aperture data from a file.
+        
+        Parameters:
+            path1: Path to aperture all_optics_B1.tfs file.
+            title: Prompt dispolayed upon file selection.
+
+        Returns:
+            Processeed aperture DataFrames for beams 1 and 2, respectively.
+        """
         # Select the aperture files
         path1 = select_file(path1, title, '/eos/user/m/morwat/aperture_measurements/madx/2023/')
         path2 = str(path1).replace('B1', 'B4')
@@ -87,7 +100,7 @@ class Data:
             raise FileNotFoundError(f"File {path1} not found.")
         return df1.drop_duplicates(subset=['S']), df2.drop_duplicates(subset=['S'])
 
-    def twiss(self):
+    def twiss(self) -> None:
         """
         Compute and process the twiss parameters for both beams.
         """
@@ -118,15 +131,15 @@ class Data:
             self._distance_to_nominal('h')
             self._distance_to_nominal('v')
 
-    def _process_twiss(self, twiss_df):
+    def _process_twiss(self, twiss_df: pd.DataFrame) -> pd.DataFrame:
         """
         Process the twiss DataFrame to remove unnecessary elements and columns.
 
         Parameters:
-        - twiss_df: DataFrame containing the twiss parameters.
+            twiss_df: DataFrame containing the twiss parameters.
 
         Returns:
-        - Processed DataFrame with selected columns and without 'aper' and 'drift' elements.
+            Processed DataFrame with selected columns and without 'aper' and 'drift' elements.
         """
         # Remove 'aper' and 'drift' elements
         twiss_df = twiss_df[~twiss_df['name'].str.contains('aper|drift')]
@@ -134,42 +147,59 @@ class Data:
         # Select necessary columns
         return twiss_df[['s', 'name', 'x', 'y', 'betx', 'bety']]
     
-    def _get_shift(self):
+    def _get_shift(self) -> float:
+        """
+        Calculates the shift required to set the specified element as the new zero point.
+
+        Returns:
+            float: The amount to shift the data.
+
+        Raises:
+            ValueError: If the first element is not found in the DataFrame.
+        """
         # Find the element to be set as the new zero
-        element_position = self.tw_b1.loc[self.tw_b1['name'] == self.first_element, 's'].values[0]
+        element_positions = self.tw_b1.loc[self.tw_b1['name'] == self.first_element, 's'].values
+        
+        if not element_positions:
+            raise ValueError(f"Element '{self.first_element}' not found in the DataFrame. Aperture and drift elements are removed.")
+
         # To set to zero, shift to the left
-        shift = -element_position
+        shift = -element_positions[0]
+
         return shift
 
-    def cycle(self, element):
-        
+    def cycle(self, element: str) -> None:
+        """
+        Cycles all the data to set a new zero point.
+
+        Parameters:
+            element: The new first element to be cycled in, must be a lowercase string.
+        """
+        # Covert to lowercase if not already
+        element = element.lower()
+
         # Save the first element for the case of retwissing
         self.first_element = element
         # Find how much to shift the data
         shift = self._get_shift()
 
-        # Shift all the DataFrames by the same amount
-        self.tw_b1 = shift_by(self.tw_b1, shift, 's')
-        self.tw_b2 = shift_by(self.tw_b2, shift, 's')
-        self.nom_b1 = shift_by(self.nom_b1, shift, 's')
-        self.nom_b2 = shift_by(self.nom_b2, shift, 's')
+        # List of attributes to shift, categorized by their shift type
+        attributes_to_shift = {
+            's': ['tw_b1', 'tw_b2', 'nom_b1', 'nom_b2', 'colx_b1', 'colx_b2', 'coly_b1', 'coly_b2'],
+            'S': ['aper_b1', 'aper_b2', 'elements']
+        }
 
-        if hasattr(self, 'aper_b1'):
-            self.aper_b1 = shift_by(self.aper_b1, shift, 'S')
-            self.aper_b2 = shift_by(self.aper_b2, shift, 'S')
+        # Shift the attributes
+        for shift_type, attrs in attributes_to_shift.items():
+            for attr in attrs:
+                if hasattr(self, attr):
+                    try:
+                        setattr(self, attr, shift_by(getattr(self, attr), shift, shift_type))
+                    except Exception as e:
+                        print(f"Error shifting {attr}: {e}")
 
-        if hasattr(self, 'colx_b1'):
-            self.colx_b1 = shift_by(self.colx_b1, shift, 's')
-            self.colx_b2 = shift_by(self.colx_b2, shift, 's')
-            self.coly_b1 = shift_by(self.coly_b1, shift, 's')
-            self.coly_b2 = shift_by(self.coly_b2, shift, 's')
-
-        if hasattr(self, 'elements'):
-            self.elements = shift_by(self.elements, shift, 'S')
-
-    def _define_nominal_crossing(self):
+    def _define_nominal_crossing(self) -> None:
         """
-        Define the nominal crossing points for both beams based on the twiss parameters.
         This method extracts the 'name', 'x', 'y', and 's' columns from the twiss DataFrames
         for both beams and stores them in new attributes 'nom_b1' and 'nom_b2'.
         """
@@ -178,7 +208,18 @@ class Data:
         self.nom_b1 = self.tw_b1[['name', 'x', 'y', 's']].copy()
         self.nom_b2 = self.tw_b2[['name', 'x', 'y', 's']].copy()
 
-    def _distance_to_nominal(self, plane):
+    def _distance_to_nominal(self, plane: str) -> None:
+        """
+        Calculates the distance to nominal positions for the specified plane (horizontal or vertical).
+
+        Parameters:
+            plane: The plane for which to calculate the distances ('h' for horizontal, 'v' for vertical).
+
+        Raises:
+            ValueError: If the plane is not 'h' or 'v'.
+        """
+        if plane not in {'h', 'v'}:
+            raise ValueError("The 'plane' parameter must be 'h' for horizontal or 'v' for vertical.")
 
         if plane == 'h': 
             up, down, nom, from_nom_to_top, from_nom_to_bottom = 'x_up', 'x_down', 'x', 'x_from_nom_to_top', 'x_from_nom_to_bottom'
@@ -195,7 +236,7 @@ class Data:
         self.tw_b2.loc[:, from_nom_to_top] = (self.tw_b2[up] - self.nom_b2[nom])*1000
         self.tw_b2.loc[:, from_nom_to_bottom] = (-self.tw_b2[down] + self.nom_b2[nom])*1000
 
-    def _define_sigma(self):
+    def _define_sigma(self) -> None:
         """
         Calculate and add sigma_x and sigma_y columns to twiss DataFrames for both beams.
         """
@@ -209,12 +250,12 @@ class Data:
             df.loc[:, 'sigma_x'] = np.sqrt(df['betx'] * self.emitt / self.gamma)
             df.loc[:, 'sigma_y'] = np.sqrt(df['bety'] * self.emitt / self.gamma)
 
-    def envelope(self, n):
+    def envelope(self, n: float) -> None:
         """
         Calculate the envelope edges for the twiss DataFrames based on the envelope size.
 
         Parameters:
-        - n (float): The envelope size in sigma units.
+            n : The envelope size in sigma units.
         """
 
         # Envelope size in sigma units
@@ -230,8 +271,30 @@ class Data:
             df['x_down'] = df['x'] - n * df['sigma_x']
             df['y_up'] = df['y'] + n * df['sigma_y']
             df['y_down'] = df['y'] - n * df['sigma_y']
+            
+    def _get_col_df_from_yaml(self, f: Dict[str, Any], angle: float, beam: str, plane: str) -> pd.DataFrame:
+        """
+        Creates a DataFrame containing collimator data for the specified beam and plane.
 
-    def _get_col_df(self, f, angle, beam, plane):
+        Parameters:
+            f : A dictionary containing collimator data.
+            angle : The angle to filter collimators by.
+            beam : The beam identifier ('b1' or 'b2').
+            plane : The plane identifier ('h' for horizontal, 'v' for vertical).
+
+        Returns:
+            pd.DataFrame: A DataFrame with the collimator data, including calculated gaps.
+
+        Raises:
+            ValueError: If the beam or plane is not valid.
+        """
+
+        if beam not in {'b1', 'b2'}:
+            raise ValueError("The 'beam' parameter must be 'b1' or 'b2'.")
+    
+        if plane not in {'h', 'v'}:
+            raise ValueError("The 'plane' parameter must be 'h' for horizontal or 'v' for vertical.")
+
 
         if beam == 'b1': twiss_data=self.tw_b1
         elif beam == 'b2': twiss_data=self.tw_b2
@@ -254,7 +317,13 @@ class Data:
         # Return the collimators data
         return col
     
-    def load_collimators(self, path=None):
+    def load_collimators_from_yaml(self, path: Optional[str] = None) -> None:
+        """
+        Loads collimator data from a YAML file and creates DataFrames for collimator positions.
+
+        Parameters:
+            path : The path to the collimators YAML file. If None, a default path is used.
+        """
 
         # Load the file
         collimators_path = select_file(path, 'collimators .yaml file', '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/')
@@ -263,13 +332,20 @@ class Data:
             f = yaml.safe_load(file)
 
         # Create the DataFrames
-        self.colx_b1 = self._get_col_df(f, 0, 'b1', 'h')
-        self.colx_b2 = self._get_col_df(f, 0, 'b2', 'h')
+        self.colx_b1 = self._get_col_df_from_yaml(f, 0, 'b1', 'h')
+        self.colx_b2 = self._get_col_df_from_yaml(f, 0, 'b2', 'h')
 
-        self.coly_b1 = self._get_col_df(f, 90, 'b1', 'v')
-        self.coly_b2 = self._get_col_df(f, 90, 'b2', 'v')
+        self.coly_b1 = self._get_col_df_from_yaml(f, 90, 'b1', 'v')
+        self.coly_b2 = self._get_col_df_from_yaml(f, 90, 'b2', 'v')
     
-    def load_elements(self, path=None):
+    def load_elements(self, path: Optional[str] = None) -> None:
+        """
+        Loads machine component data from a TFS file and matches it with the twiss data.
+
+        Parameters:
+            path : The path to the machine components TFS file. If None, a default path is used.
+
+        """
 
         # Load the file
         machine_components_path = select_file(path, 'thick all_optics.tfs file', '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/')
@@ -278,62 +354,7 @@ class Data:
         # Make sure the elements align with twiss data (if cycling was performed)
         self.elements = match_with_twiss(self.tw_b1, df)
     
-    
-    def change_crossing_angle(self, ip, angle, plane = 'h'):
-    
-        if ip == 'ip1':
-            self.line_b1.vars['on_x1'] = angle
-            self.line_b2.vars['on_x1'] = angle
-        elif ip == 'ip2':
-            if plane == 'v':
-                self.line_b1.vars['on_x2v'] = angle
-                self.line_b2.vars['on_x2v'] = angle
-            elif plane == 'h':
-                self.line_b1.vars['on_x2h'] = angle
-                self.line_b2.vars['on_x2h'] = angle
-        elif ip =='ip5':
-            self.line_b1.vars['on_x5'] = angle
-            self.line_b2.vars['on_x5'] = angle
-        elif ip == 'ip8':
-            if plane == 'v':
-                self.line_b1.vars['on_x8v'] = angle
-                self.line_b2.vars['on_x8v'] = angle
-            elif plane == 'h':
-                self.line_b1.vars['on_x8h'] = angle
-                self.line_b2.vars['on_x8h'] = angle
-
-    def add_separation_bump(self, ip, value, plane = 'h'):
-
-        if ip == 'ip1':
-            self.line_b1.vars['on_sep1'] = value
-            self.line_b2.vars['on_sep1'] = value
-        elif ip == 'ip2':
-            if plane == 'v':
-                self.line_b1.vars['on_sep2v'] = value
-                self.line_b2.vars['on_sep2v'] = value
-            elif plane == 'h':
-                self.line_b1.vars['on_sep2h'] = value
-                self.line_b2.vars['on_sep2h'] = value
-        elif ip =='ip5':
-            self.line_b1.vars['on_sep5'] = value
-            self.line_b2.vars['on_sep5'] = value
-        elif ip == 'ip8':
-            if plane == 'v':
-                self.line_b1.vars['on_sep8v'] = value
-                self.line_b2.vars['on_sep8v'] = value
-            elif plane == 'h':
-                self.line_b1.vars['on_sep8h'] = value
-                self.line_b2.vars['on_sep8h'] = value
-
-    def spectrometer(self, ip, value):
-
-        if ip == 'ip2':
-            self.line_b1.vars['on_alice'] = value
-            self.line_b2.vars['on_alice'] = value
-        elif ip == 'ip8':
-            self.line_b1.vars['on_lhcb'] = value
-            self.line_b2.vars['on_lhcb'] = value
+    def change_knob(self, knob: str, value: float) -> None:
         
-
-                
-
+        self.line_b1.vars[knob] = value
+        self.line_b2.vars[knob] = value
