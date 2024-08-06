@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText
 from IPython.display import display
 
-def plot(data, plane):
+def plot(data, plane, BPM_data = None, collimators_data = None):
 
     global knob_dropdown, add_button, remove_button, apply_button, graph_container, knob_box
     global values, selected_knobs, knob_widgets
@@ -107,7 +107,6 @@ def update_graph(data, plane):
     fig_widget = go.FigureWidget(fig)
     graph_container.children = [fig_widget]
         
-
 def create_figure(data, plane):
 
     # For buttons
@@ -145,7 +144,7 @@ def create_figure(data, plane):
 
     # If there are collimators 
     if hasattr(data, 'colx_b1'):
-        col_vis, collimator = collimators(data, plane)
+        col_vis, collimator = collimators_from_yaml(data, plane)
         for i in collimator:
             fig.add_trace(i, row=row, col=col)
 
@@ -222,6 +221,18 @@ def update_layout(fig, plane, row, col):
     # Update the x-axis and y-axis tick format
     fig.update_layout(xaxis=dict(tickformat=','), yaxis=dict(tickformat=','), plot_bgcolor='white')
 
+def BPM_data(data, plane):
+    
+    if plane == 'h': y_b1, y_b2 = data.b1_positions.X, data.b2_positions.X
+    elif plane == 'v': y_b1, y_b2 = data.b1_positions.Y, data.b2_positions.Y
+
+    b1 = go.Scatter(x=data.b1_positions.S, y=y_b1, mode='markers', 
+                          line=dict(color='blue'), text = data.b1_positions.NAME, name='Beam 1')
+    
+    b2 = go.Scatter(x=data.b2_positions.S, y=y_b2, mode='markers', 
+                          line=dict(color='blue'), text = data.b2_positions.NAME, name='Beam 1')
+    
+    return np.full(2, True), [b1, b2]
 
 def machine_components(data):
 
@@ -255,6 +266,20 @@ def machine_components(data):
         visibility_arr = np.append(visibility_arr, np.full(obj_df.shape[0], True))
         
     return visibility_arr, elements
+
+def collimators_from_yaml(data, plane):
+    
+    visibility_arr_b1, collimators = collimators(data, plane)
+    
+    return visibility_arr_b1, collimators
+
+def collimators_from_timber(col_data, twiss_data, plane):
+    
+    col_data.process(twiss_data)
+    
+    visibility_arr_b1, collimators = collimators(col_data, plane)
+    
+    return visibility_arr_b1, collimators
 
 def collimators(data, plane):
 

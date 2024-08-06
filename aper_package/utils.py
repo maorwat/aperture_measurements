@@ -5,6 +5,9 @@ import os
 
 from ipyfilechooser import FileChooser
 from IPython.display import display
+import ipywidgets as widgets
+
+from datetime import datetime, timezone, timedelta
 
 def shift_by(df, by, s):
     """
@@ -74,3 +77,45 @@ def select_file_in_SWAN(initial_path='/eos/project-c/collimation-team/machine_co
 
     file_chooser.register_callback(on_selection_change)
     return file_chooser
+
+def select_time():
+    # Step 1: Create the date and time picker widgets
+    date_picker = widgets.DatePicker(description='Pick a Date', disabled=False)
+    hour_picker = widgets.Dropdown(options=[(str(i).zfill(2), i) for i in range(24)], description='Hour:', value=0)
+    minute_picker = widgets.Dropdown(options=[(str(i).zfill(2), i) for i in range(60)], description='Minute:', value=0)
+    second_picker = widgets.Dropdown(options=[(str(i).zfill(2), i) for i in range(60)], description='Second:', value=0)
+
+    # Initialize the variable `t` as a list to store the value
+    t = [None]
+
+    # Step 2: Function to convert selected date and time to a datetime object
+    def on_date_time_change(change):
+        if date_picker.value:
+            selected_date = date_picker.value
+            selected_hour = hour_picker.value
+            selected_minute = minute_picker.value
+            selected_second = second_picker.value
+            
+            # Combine the date and time into a datetime object
+            selected_datetime = datetime(
+                selected_date.year,
+                selected_date.month,
+                selected_date.day,
+                selected_hour,
+                selected_minute,
+                selected_second
+            )
+            
+            t[0] = selected_datetime  # Update the first element of the list
+
+    # Step 3: Display the widgets and set up the event listeners
+    hbox = widgets.HBox([date_picker, hour_picker, minute_picker, second_picker])
+    
+    date_picker.observe(on_date_time_change, names='value')
+    hour_picker.observe(on_date_time_change, names='value')
+    minute_picker.observe(on_date_time_change, names='value')
+    second_picker.observe(on_date_time_change, names='value')
+
+    display(hbox)
+
+    return t  # Return the list containing the datetime object
