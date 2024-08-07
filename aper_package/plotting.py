@@ -9,16 +9,18 @@ from plotly.subplots import make_subplots
 from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText
 from IPython.display import display
 
-def plot(data, plane, BPM_data = None, collimators_data = None):
+def plot(data, plane, BPMs = None, collimators = None):
 
     global knob_dropdown, add_button, remove_button, apply_button, graph_container, knob_box
     global values, selected_knobs, knob_widgets
-    global aper_data, aper_plane
+    global aper_data, aper_plane, beam_position_data, col_data
 
-    aper_data = data
+    aper_data = data          #TODO: make the names make sense
     aper_plane = plane
+    beam_position_data = BPMs
+    col_data = collimators
 
-    fig, visibility_b1, visibility_b2, row, col = create_figure(data, plane)
+    fig, visibility_b1, visibility_b2, row, col = create_figure(aper_data, aper_plane, beam_position_data, col_data)
 
     # Dictionary to store multipliers for each option
     values = {}
@@ -41,10 +43,6 @@ def plot(data, plane, BPM_data = None, collimators_data = None):
     # Create an empty VBox container for the graph and multiplier widgets
     graph_container = VBox()
     knob_box = VBox()
-    
-    # Set initial visibility for the traces
-    for i, trace in enumerate(fig.data):
-        trace.visible = visibility_b1[i]
 
     # Arrange widgets in a layout
     controls = HBox([knob_dropdown, add_button, remove_button, apply_button], layout=Layout(justify_content='space-around'))
@@ -57,7 +55,7 @@ def plot(data, plane, BPM_data = None, collimators_data = None):
     remove_button.on_click(on_remove_button_clicked)
     apply_button.on_click(on_apply_button_clicked)
 
-    update_graph(aper_data, aper_plane)
+    update_graph(aper_data, aper_plane, beam_position_data, col_data)
 
 # Function to handle adding a selected option
 def on_add_button_clicked(b):
@@ -97,17 +95,19 @@ def on_apply_button_clicked(b):
     
     aper_data.twiss()
         
-    update_graph(aper_data, aper_plane)
+    update_graph(aper_data, aper_plane, beam_position_data, col_data)
 
 # Function to update the graph
-def update_graph(data, plane):
-    fig, _, _, row, col = create_figure(data, plane)
+def update_graph(data, plane, BPMs, collimators):
+    fig, visibility_b1, visibility_b2, row, col = create_figure(data, plane, BPMs, collimators)
     # Update figure layout
-    update_layout(fig, plane, row, col)
+    update_layout(fig, plane, row, col, visibility_b1, visibility_b2)
+        
     fig_widget = go.FigureWidget(fig)
+
     graph_container.children = [fig_widget]
         
-def create_figure(data, plane):
+def create_figure(data, plane, BPMs, collimators):
 
     # For buttons
     visibility_b1 = np.array([], dtype=bool)
@@ -151,6 +151,14 @@ def create_figure(data, plane):
         visibility_b1 = np.append(visibility_b1, col_vis)
         visibility_b2 = np.append(visibility_b2, np.logical_not(col_vis))
 
+    if collimators:
+        col_vis, collimator = collimators_from_timber(collimators, data, plane)
+        for i in collimator:
+            fig.add_trace(i, row=row, col=col)
+
+        visibility_b1 = np.append(visibility_b1, col_vis)
+        visibility_b2 = np.append(visibility_b2, np.logical_not(col_vis))
+
     # Add beam positions
     beam_vis, beams = beam_positions(data, plane)
     for i in beams:
@@ -174,6 +182,18 @@ def create_figure(data, plane):
     
     visibility_b1 = np.append(visibility_b1, env_vis)
     visibility_b2 = np.append(visibility_b2, env_vis)
+
+    if BPMs:
+        BPM_vis, BPM_traces = BPM_data(BPMs, plane)
+        for i in BPM_traces:
+            fig.add_trace(i, row=row, col=col)
+
+        visibility_b1 = np.append(visibility_b1, BPM_vis)
+        visibility_b2 = np.append(visibility_b2, BPM_vis)
+
+    # Set initial visibility for the traces
+    #for i, trace in enumerate(fig.data):
+        #trace.visible = visibility_b1[i]
 
     return fig, visibility_b1, visibility_b2, row, col
 
@@ -206,7 +226,7 @@ def add_knob_dropdown():
     
     return dropdown_widget
 
-def update_layout(fig, plane, row, col):
+def update_layout(fig, plane, row, col, visibility_b1, visibility_b2):
 
     # Set layout
     #fig.update_layout(height=800, width=1600)
@@ -221,16 +241,35 @@ def update_layout(fig, plane, row, col):
     # Update the x-axis and y-axis tick format
     fig.update_layout(xaxis=dict(tickformat=','), yaxis=dict(tickformat=','), plot_bgcolor='white')
 
+    if hasattr(aper_data, 'aper_b1') or hasattr(aper_data, 'colx_b1') or col_data:
+
+        fig.update_layout(
+        updatemenus=[
+            dict(
+                type="buttons",
+                direction="right",
+                active=0,
+                x=0.27,
+                y=1.4,
+                buttons=list([
+                    dict(label="Beam 1 aperture/collimation",
+                        method="update",
+                        args=[{"visible": visibility_b1}]),
+                    dict(label="Beam 2 aperture/collimation",
+                        method="update",
+                        args=[{"visible": visibility_b2}])]))])
+
 def BPM_data(data, plane):
     
     if plane == 'h': y_b1, y_b2 = data.b1_positions.X, data.b2_positions.X
     elif plane == 'v': y_b1, y_b2 = data.b1_positions.Y, data.b2_positions.Y
 
-    b1 = go.Scatter(x=data.b1_positions.S, y=y_b1, mode='markers', 
-                          line=dict(color='blue'), text = data.b1_positions.NAME, name='Beam 1')
+    # Make sure the units are in meters like twiss data
+    b1 = go.Scatter(x=data.b1_positions.S, y=y_b1/1e6, mode='markers', 
+                          line=dict(color='blue'), text = data.b1_positions.NAME, name='BPM beam 1')
     
-    b2 = go.Scatter(x=data.b2_positions.S, y=y_b2, mode='markers', 
-                          line=dict(color='blue'), text = data.b2_positions.NAME, name='Beam 1')
+    b2 = go.Scatter(x=data.b2_positions.S, y=y_b2/1e6, mode='markers', 
+                          line=dict(color='red'), text = data.b2_positions.NAME, name='BPM beam 2')
     
     return np.full(2, True), [b1, b2]
 
@@ -275,11 +314,11 @@ def collimators_from_yaml(data, plane):
 
 def collimators_from_timber(col_data, twiss_data, plane):
     
-    col_data.process(twiss_data)
+    col_data.process(twiss_data) #TODO: make the names make sense!!!
     
-    visibility_arr_b1, collimators = collimators(col_data, plane)
+    visibility_arr_b1, collimators_data = collimators(col_data, plane)
     
-    return visibility_arr_b1, collimators
+    return visibility_arr_b1, collimators_data
 
 def collimators(data, plane):
 
@@ -290,14 +329,15 @@ def collimators(data, plane):
     collimators = []
 
     # Plot
-    for df in [df_b1, df_b2]:
+    for df, vis in zip([df_b1, df_b2], [True, False]):
+
         for i in range(df.shape[0]):
-            x0, y0b, y0t, x1, y1 = df.s.iloc[i] - 0.5, df.bottom_gap_col.iloc[i], df.top_gap_col.iloc[i], df.s.iloc[i] + 0.5, 0.05
+            x0, y0b, y0t, x1, y1 = df.s.iloc[i] - 0.5, df.bottom_gap_col.iloc[i], df.top_gap_col.iloc[i], df.s.iloc[i] + 0.5, 0.1
 
             top_col = go.Scatter(x=[x0, x0, x1, x1], y=[y0t, y1, y1, y0t], fill="toself", mode='lines',
-                            fillcolor='black', line=dict(color='black'), name=df.name.iloc[i])
+                            fillcolor='black', line=dict(color='black'), name=df.name.iloc[i], visible=vis)
             bottom_col = go.Scatter(x=[x0, x0, x1, x1], y=[y0b, -y1, -y1, y0b], fill="toself", mode='lines',
-                            fillcolor='black', line=dict(color='black'), name=df.name.iloc[i])
+                            fillcolor='black', line=dict(color='black'), name=df.name.iloc[i], visible=vis)
             
             collimators.append(top_col)
             collimators.append(bottom_col)
@@ -373,8 +413,8 @@ def nominal_beam_positions(data, plane):
     if plane == 'h': y_b1, y_b2 = data.nom_b1.x, data.nom_b2.x
     elif plane == 'v': y_b1, y_b2 = data.nom_b1.y, data.nom_b2.y
 
-    b1 = go.Scatter(x=data.nom_b1.s, y=y_b1, mode='lines', line=dict(color='blue', dash='dash'), text = data.nom_b1.name, name='Beam 1')
-    b2 = go.Scatter(x=data.nom_b2.s, y=y_b2, mode='lines', line=dict(color='red', dash='dash'), text = data.nom_b2.name, name='Beam 2')
+    b1 = go.Scatter(x=data.nom_b1.s, y=y_b1, mode='lines', line=dict(color='blue', dash='dash'), text = data.nom_b1.name, name='Nominal beam 1')
+    b2 = go.Scatter(x=data.nom_b2.s, y=y_b2, mode='lines', line=dict(color='red', dash='dash'), text = data.nom_b2.name, name='Nominal beam 2')
     
     return np.full(2, True), [b1, b2]
 
@@ -385,16 +425,16 @@ def aperture(data, plane):
         # Aperture
         top_aper_b1 = go.Scatter(x=data.aper_b1.S, y=data.aper_b1.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')
         bottom_aper_b1 = go.Scatter(x=data.aper_b1.S, y=-data.aper_b1.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')     
-        top_aper_b2 = go.Scatter(x=data.aper_b2.S, y=data.aper_b2.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2')
-        bottom_aper_b2 = go.Scatter(x=data.aper_b2.S, y=-data.aper_b2.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2') 
+        top_aper_b2 = go.Scatter(x=data.aper_b2.S, y=data.aper_b2.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False)
+        bottom_aper_b2 = go.Scatter(x=data.aper_b2.S, y=-data.aper_b2.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False) 
 
     elif plane == 'v':
             
         # Aperture
         top_aper_b1 = go.Scatter(x=data.aper_b1.S, y=data.aper_b1.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')
         bottom_aper_b1 = go.Scatter(x=data.aper_b1.S, y=-data.aper_b1.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')
-        top_aper_b2 = go.Scatter(x=data.aper_b2.S, y=data.aper_b2.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2')
-        bottom_aper_b2 = go.Scatter(x=data.aper_b2.S, y=-data.aper_b2.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2') 
+        top_aper_b2 = go.Scatter(x=data.aper_b2.S, y=data.aper_b2.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False)
+        bottom_aper_b2 = go.Scatter(x=data.aper_b2.S, y=-data.aper_b2.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False) 
 
     traces = [top_aper_b1, bottom_aper_b1, top_aper_b2, bottom_aper_b2]
     visibility = np.array([True, True, False, False])

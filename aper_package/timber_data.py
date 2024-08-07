@@ -2,6 +2,7 @@ import sys
 sys.path.append('/eos/home-i03/m/morwat/.local/lib/python3.9/site-packages/')
 
 import pandas as pd
+import numpy as np
 import yaml
 import tfs
 
@@ -96,28 +97,26 @@ class CollimatorsData:
         col_df2.columns = col_df2.columns.str.lower()
 
         # Step 1: Add an empty column to the DataFrame
-        col_df1['gap'] = None 
+        col_df1['gap'] = np.nan
 
         # Step 2: Iterate over all rows and modify the new column's values
         for index, row in col_df1.iterrows():
             
             name = str(row['name']+':MEAS_LVDT_GD')
-            
             col_gap = self.ldb.get(name, t, t+timedelta(seconds=1))
-            
-            try: col_df1.at[index, 'gap'] = col_gap[name][1][0]
+
+            try: col_df1.at[index, 'gap'] = col_gap[name][1][0]/1e3
             except: continue
 
-        col_df2['gap'] = None 
+        col_df2['gap'] = np.nan 
 
         # Step 2: Iterate over all rows and modify the new column's values
         for index, row in col_df2.iterrows():
             
             name = str(row['name']+':MEAS_LVDT_GD')
-            
             col_gap = self.ldb.get(name, t, t+timedelta(seconds=1))
             
-            try: col_df2.at[index, 'gap'] = col_gap[name][1][0]
+            try: col_df2.at[index, 'gap'] = col_gap[name][1][0]/1e3
             except: continue
 
         self.b1_data = col_df1.copy()
@@ -130,15 +129,21 @@ class CollimatorsData:
         coly_b1 = self.b1_data[self.b1_data['angle']==90]
         coly_b2 = self.b2_data[self.b2_data['angle']==90]
         
-        self.colx_b1 = self.add_collimator_positions(twiss, colx_b1, 'x')
-        self.colx_b2 = self.add_collimator_positions(twiss, colx_b2, 'x')
-        self.coly_b1 = self.add_collimator_positions(twiss, coly_b1, 'x')
-        self.coly_b2 = self.add_collimator_positions(twiss, coly_b2, 'x')
+        self.colx_b1 = self.add_collimator_positions(twiss.tw_b1, colx_b1, 'x')
+        self.colx_b2 = self.add_collimator_positions(twiss.tw_b2, colx_b2, 'x')
+        self.coly_b1 = self.add_collimator_positions(twiss.tw_b1, coly_b1, 'x')
+        self.coly_b2 = self.add_collimator_positions(twiss.tw_b2, coly_b2, 'x')
                
     def add_collimator_positions(self, twiss, col, x_key):
-        
+
+        # Ensure 'col' is a copy to avoid SettingWithCopyWarning
+        col = col.copy()
+
+        # Change names to lowercase to match twiss
+        col.loc[:, 'name'] = col['name'].str.lower()
+
         # Merge with twiss data to find collimator positions
-        col = pd.merge(col, twiss, on='name', how='left')
+        col = pd.merge(col, twiss[['name', 'x', 'y']], on='name', how='left')
 
         # Calculate gap in meters and add to the dataFrame
         col.loc[:, 'top_gap_col'] = col['gap'] + col[x_key]
