@@ -32,26 +32,6 @@ def shift_by(df, by, s):
 
     return df
 
-def select_file(path, title, initial_path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/'):
-
-    # If path provided use it
-    try:
-        if isinstance(path, list):
-            # If SWAN is being annoying
-            file_path = path[0]
-        elif path:
-            file_path = path
-        # Else ask to select a file
-        else:
-            root = tk.Tk()
-            root.withdraw()  # Hide the root window
-            file_path = filedialog.askopenfilename(initialdir=initial_path, title=f'Select {title}')
-        return file_path
-    except Exception as e:
-        # If no display environment available (SWAN)
-        print("No display found. Use select_file_in_SWAN() and provide path as an argument.")
-        raise
-
 def match_with_twiss(twiss, aper_to_match):
 
     # Convert the 'NAME' column to lowercase to match the 'name' column in df_correct

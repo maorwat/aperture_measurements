@@ -236,10 +236,6 @@ def create_figure(data, plane, BPMs, collimators):
         visibility_b1 = np.append(visibility_b1, BPM_vis)
         visibility_b2 = np.append(visibility_b2, BPM_vis)
 
-    # Set initial visibility for the traces
-    #for i, trace in enumerate(fig.data):
-        #trace.visible = visibility_b1[i]
-
     return fig, visibility_b1, visibility_b2, row, col
 
 def add_knob_dropdown():

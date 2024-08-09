@@ -11,7 +11,6 @@ from typing import Any, Dict, Optional
 import xtrack as xt
 
 from aper_package.utils import shift_by
-from aper_package.utils import select_file
 from aper_package.utils import match_with_twiss
 
 import warnings
@@ -20,9 +19,9 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 class Data:
     
     def __init__(self,
+                 path_b1: str,
                  n: Optional[float] = 0,
-                 emitt: Optional[str] = 3.5e-6,
-                 line1: Optional[str] = None):
+                 emitt: Optional[str] = 3.5e-6):
         
         """
         Initialize the AperData class with necessary configurations.
@@ -40,7 +39,7 @@ class Data:
         self.length = 26658.88318
 
         # Load line data
-        self.line_b1, self.line_b2 = self._load_lines_data(line1, 'json file for b1')
+        self.line_b1, self.line_b2 = self._load_lines_data(path_b1)
 
         # Define gamma using loaded line
         self.gamma = self.line_b1.particle_ref.to_pandas()['gamma0'][0]
@@ -53,7 +52,7 @@ class Data:
         self._distance_to_nominal('h')
         self._distance_to_nominal('v')
 
-    def _load_lines_data(self, path1: str, title: str) -> None:
+    def _load_lines_data(self, path_b1: str) -> None:
         """Load lines data from a JSON file.
         
         Parameters:
@@ -61,19 +60,18 @@ class Data:
             title: Prompt dispolayed upon file selection.
         """
         
-        path1 = select_file(path1, title, '/eos/user/m/morwat/aperture_measurements/madx/2023/xsuite/')
-        path2 = str(path1).replace('b1', 'b2')
+        path_b2 = str(path_b1).replace('b1', 'b2')
 
         try:
-            return xt.Line.from_json(path1), xt.Line.from_json(path2)
+            return xt.Line.from_json(path_b1), xt.Line.from_json(path_b2)
         except FileNotFoundError:
-            raise FileNotFoundError(f"File {path1} not found.")
+            raise FileNotFoundError(f"File {path_b1} not found.")
 
-    def load_aperture(self, path1: Optional[str]=None) -> None:
+    def load_aperture(self, path_b1: str) -> None:
         # Load and process aperture data
-        self.aper_b1, self.aper_b2 = self._load_aperture_data(path1, 'Select all_optics_B1.tfs')
+        self.aper_b1, self.aper_b2 = self._load_aperture_data(path_b1)
     
-    def _load_aperture_data(self, path1: str, title: str) -> pd.DataFrame:
+    def _load_aperture_data(self, path_b1) -> pd.DataFrame:
         """Load and process aperture data from a file.
         
         Parameters:
@@ -83,13 +81,13 @@ class Data:
         Returns:
             Processeed aperture DataFrames for beams 1 and 2, respectively.
         """
-        # Select the aperture files
-        path1 = select_file(path1, title, '/eos/user/m/morwat/aperture_measurements/madx/2023/')
-        path2 = str(path1).replace('B1', 'B4')
+        # Create path for the aperture file for b2
+        path_b2 = str(path_b1).replace('B1', 'B4')
+
         try:
             # Drop uneeded columns
-            df1 = tfs.read(path1)[['S', 'NAME', 'APER_1', 'APER_2']]
-            df2 = tfs.read(path2)[['S', 'NAME', 'APER_1', 'APER_2']]
+            df1 = tfs.read(path_b1)[['S', 'NAME', 'APER_1', 'APER_2']]
+            df2 = tfs.read(path_b2)[['S', 'NAME', 'APER_1', 'APER_2']]
             # Get rid of undefined values
             df1 = df1[(df1['APER_1'] < 0.2) & (df1['APER_1'] != 0) & (df1['APER_2'] < 0.2) & (df1['APER_2'] != 0)]
             df2 = df2[(df2['APER_1'] < 0.2) & (df2['APER_1'] != 0) & (df2['APER_2'] < 0.2) & (df2['APER_2'] != 0)]
@@ -97,7 +95,7 @@ class Data:
             df1 = match_with_twiss(self.tw_b1, df1)
             df2 = match_with_twiss(self.tw_b2, df2)
         except FileNotFoundError:
-            raise FileNotFoundError(f"File {path1} not found.")
+            raise FileNotFoundError(f"File {path_b1} not found.")
         return df1.drop_duplicates(subset=['S']), df2.drop_duplicates(subset=['S'])
 
     def twiss(self) -> None:
@@ -317,7 +315,7 @@ class Data:
         # Return the collimators data
         return col
     
-    def load_collimators_from_yaml(self, path: Optional[str] = None) -> None:
+    def load_collimators_from_yaml(self, path: str) -> None:
         """
         Loads collimator data from a YAML file and creates DataFrames for collimator positions.
 
@@ -326,9 +324,8 @@ class Data:
         """
 
         # Load the file
-        collimators_path = select_file(path, 'collimators .yaml file', '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/')
-        
-        with open(collimators_path, 'r') as file:
+
+        with open(path, 'r') as file:
             f = yaml.safe_load(file)
 
         # Create the DataFrames
@@ -338,7 +335,7 @@ class Data:
         self.coly_b1 = self._get_col_df_from_yaml(f, 90, 'b1', 'v')
         self.coly_b2 = self._get_col_df_from_yaml(f, 90, 'b2', 'v')
     
-    def load_elements(self, path: Optional[str] = None) -> None:
+    def load_elements(self, path: str) -> None:
         """
         Loads machine component data from a TFS file and matches it with the twiss data.
 
@@ -348,8 +345,7 @@ class Data:
         """
 
         # Load the file
-        machine_components_path = select_file(path, 'thick all_optics.tfs file', '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/')
-        df = tfs.read(machine_components_path)
+        df = tfs.read(path)
 
         # Make sure the elements align with twiss data (if cycling was performed)
         self.elements = match_with_twiss(self.tw_b1, df)

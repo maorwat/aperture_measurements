@@ -8,7 +8,7 @@ sys.path.append(str(Path.cwd().parent))
 
 from aper_package.timber_data import BPMData, CollimatorsData
 
-class TestAperData(unittest.TestCase):
+class TestTimberData(unittest.TestCase):
     
     def setUp(self):
         time = datetime(2023, 4, 21, 10, 53, 15)
