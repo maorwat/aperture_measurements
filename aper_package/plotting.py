@@ -27,9 +27,6 @@ def plot(data, plane, BPMs = None, collimators = None):
     selected_knobs = []
     knob_widgets = {}
 
-    # Create a dropdown to toggle aperture and collimator data
-    beam_dropdown = add_beam_dropdown(visibility_b1, visibility_b2)
-
     # Create a dropdown to select a knob
     knob_dropdown = add_knob_dropdown()
 
@@ -41,14 +38,49 @@ def plot(data, plane, BPMs = None, collimators = None):
     apply_button = Button(description="Apply", button_style='primary')
 
     # Create an empty VBox container for the graph and multiplier widgets
-    graph_container = VBox()
-    knob_box = VBox()
+    graph_container = VBox(layout=Layout(
+        justify_content='center',
+        align_items='center',
+        width='100%',
+        padding='10px',
+        border='solid 2px #eee'
+    ))
+    
+    knob_box = VBox(layout=Layout(
+        justify_content='center',
+        align_items='center',
+        width='100%',
+        padding='10px',
+        border='solid 2px #eee'
+    ))
 
     # Arrange widgets in a layout
-    controls = HBox([knob_dropdown, add_button, remove_button, apply_button], layout=Layout(justify_content='space-around'))
+    controls = HBox(
+        [knob_dropdown, add_button, remove_button, apply_button],
+        layout=Layout(
+            justify_content='space-around',  # Distribute space evenly
+            align_items='center',            # Center align all items
+            width='100%',
+            padding='10px',                  # Add padding around controls
+            border='solid 2px #ccc'
+        )
+    )
+    
+    # Combine everything into the main VBox layout
+    everything = VBox(
+        [controls, knob_box, graph_container],
+        layout=Layout(
+            justify_content='center',
+            align_items='center',
+            width='80%',                     # Limit width to 80% of the page
+            margin='0 auto',                 # Center the VBox horizontally
+            padding='20px',                  # Add padding around the whole container
+            border='solid 2px #ddd'
+        )
+    )
 
     # Display the widgets
-    display(VBox([controls, knob_box, graph_container]))
+    display(everything)
 
     # Set up event handlers
     add_button.on_click(on_add_button_clicked)
@@ -68,12 +100,13 @@ def on_add_button_clicked(b):
         knob_widget = FloatText(
             value=1.0,
             description=f'{knob}',
-            disabled=False
+            disabled=False,
+            layout=Layout(width='270px')  # Adjust width as needed
         )
         knob_widgets[knob] = knob_widget
 
         # Update selected options label and display multiplier widgets
-        knob_box.children = [knob_widgets[value] for value in selected_knobs]
+        update_knob_box()
 
 # Function to handle removing a selected option
 def on_remove_button_clicked(b):
@@ -85,7 +118,19 @@ def on_remove_button_clicked(b):
             del knob_widgets[knob]  # Remove the multiplier widget
         
         # Update selected options label and display multiplier widgets
-        knob_box.children = [knob_widgets[value] for value in selected_knobs]
+        update_knob_box()
+        
+# Function to update the knob_box layout
+def update_knob_box():
+    # Group the widgets into sets of three per row
+    rows = []
+    for i in range(0, len(selected_knobs), 3):
+        row = HBox([knob_widgets[knob] for knob in selected_knobs[i:i+3]],
+                   layout=Layout(align_items='flex-start'))  # Align to left
+        rows.append(row)
+
+    # Update the knob_box with the new rows
+    knob_box.children = rows
 
 # Function to apply changes and update the graph
 def on_apply_button_clicked(b):
@@ -197,21 +242,6 @@ def create_figure(data, plane, BPMs, collimators):
 
     return fig, visibility_b1, visibility_b2, row, col
 
-def add_beam_dropdown(visibility_b1, visibility_b2):
-
-    # Define buttons to toggle aperture and collimator data
-    buttons = [
-            dict(
-                label="Beam 1",
-                method="update",
-                args=[{"visible": visibility_b1}]),
-            dict(
-                label="Beam 2",
-                method="update",
-                args=[{"visible": visibility_b2}])]
-    
-    return buttons
-
 def add_knob_dropdown():
 
     knobs = ['on_x1', 'on_x2h', 'on_x2v', 'on_x5', 'on_x8h', 'on_x8v',
@@ -229,7 +259,7 @@ def add_knob_dropdown():
 def update_layout(fig, plane, row, col, visibility_b1, visibility_b2):
 
     # Set layout
-    #fig.update_layout(height=800, width=1600)
+    fig.update_layout(height=600, width=800, showlegend=False)
 
     # Change the axes limits and labels
     fig.update_xaxes(title_text="s [m]", row=row, col=col)
@@ -249,8 +279,8 @@ def update_layout(fig, plane, row, col, visibility_b1, visibility_b2):
                 type="buttons",
                 direction="right",
                 active=0,
-                x=0.27,
-                y=1.4,
+                x=0.62,
+                y=1.2,
                 buttons=list([
                     dict(label="Beam 1 aperture/collimation",
                         method="update",

@@ -35,19 +35,22 @@ def shift_by(df, by, s):
 def select_file(path, title, initial_path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/'):
 
     # If path provided use it
-    if path:
-        file_path = path
-    # If no display environment available (SWAN)
-    elif not os.getenv('DISPLAY'):
-        print(f"No display found. Please manually provide the path for {title} or provide the path as an argument.")
-        return input(f"Enter path for {title}: ")
-    # Else ask to select a file
-    else:
-        root = tk.Tk()
-        root.withdraw()  # Hide the root window
-        file_path = filedialog.askopenfilename(initialdir=initial_path, title=f'Select {title}')
-    
-    return file_path
+    try:
+        if isinstance(path, list):
+            # If SWAN is being annoying
+            file_path = path[0]
+        elif path:
+            file_path = path
+        # Else ask to select a file
+        else:
+            root = tk.Tk()
+            root.withdraw()  # Hide the root window
+            file_path = filedialog.askopenfilename(initialdir=initial_path, title=f'Select {title}')
+        return file_path
+    except Exception as e:
+        # If no display environment available (SWAN)
+        print("No display found. Use select_file_in_SWAN() and provide path as an argument.")
+        raise
 
 def match_with_twiss(twiss, aper_to_match):
 
@@ -68,15 +71,20 @@ def match_with_twiss(twiss, aper_to_match):
     return df_merged
 
 def select_file_in_SWAN(initial_path='/eos/project-c/collimation-team/machine_configurations'):
+    
+    file = [None]
+    
     file_chooser = FileChooser(initial_path)
     display(file_chooser)
     
     def on_selection_change(change):
         if file_chooser.selected:
             print(f"Selected file: {file_chooser.selected}")
+            file[0] = file_chooser.selected
 
     file_chooser.register_callback(on_selection_change)
-    return file_chooser
+    
+    return file
 
 def select_time():
     # Step 1: Create the date and time picker widgets

@@ -158,9 +158,9 @@ class Data:
             ValueError: If the first element is not found in the DataFrame.
         """
         # Find the element to be set as the new zero
-        element_positions = self.tw_b1.loc[self.tw_b1['name'] == self.first_element, 's'].values
-        
-        if not element_positions:
+        try:
+            element_positions = self.tw_b1.loc[self.tw_b1['name'] == self.first_element, 's'].values
+        except ValueError:
             raise ValueError(f"Element '{self.first_element}' not found in the DataFrame. Aperture and drift elements are removed.")
 
         # To set to zero, shift to the left
