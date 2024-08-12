@@ -70,8 +70,10 @@ class TestAperData(unittest.TestCase):
         
         self.data.envelope(n=11)
         
-        self.assertAlmostEqual(self.data.tw_b1[self.data.tw_b1['name']=='ip5']['sigma_y'].values[0], 0.00028429817383814163, 10)
-        self.assertAlmostEqual(self.data.tw_b2[self.data.tw_b2['name']=='ip2']['sigma_x'].values[0], 0.00027062576526564554, 10)
+        self.assertAlmostEqual(self.data.tw_b1[self.data.tw_b1['name']=='ip5']['x_up'].values[0], 0.0031231811749489633, 10)
+        self.assertAlmostEqual(self.data.tw_b1[self.data.tw_b1['name']=='ip5']['x_down'].values[0], -0.0031233080241618244, 10)
+        self.assertAlmostEqual(self.data.tw_b2[self.data.tw_b2['name']=='ip2']['x_up'].values[0], 0.006476917796463266, 10)
+        self.assertAlmostEqual(self.data.tw_b2[self.data.tw_b2['name']=='ip2']['x_down'].values[0], 0.0005231509606190639, 10)
         
     def test_knobs(self):
         

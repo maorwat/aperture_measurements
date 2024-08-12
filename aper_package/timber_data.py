@@ -1,8 +1,4 @@
-import sys
-sys.path.append('/eos/home-i03/m/morwat/.local/lib/python3.9/site-packages/')
-
 import pandas as pd
-import numpy as np
 import yaml
 import tfs
 
@@ -14,19 +10,21 @@ from datetime import timedelta
 
 class BPMData:
 
-    def __init__(self, spark, time):
+    def __init__(self, 
+                 spark,
+                 time,
+                 path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/all_optics_B1.tfs'):
 
         # initialise the logging
         self.ldb = pytimber.LoggingDB(spark_session=spark)
-        self.load_data(time)
+        self.load_data(time, path)
 
-    def load_data(self, time):
+    def load_data(self, t, path):
         
-        if isinstance(time, list):
-            # If time was selected using utils.select_time()
-            t = time[0]
-        else:
-            t = time
+        # If time was selected using utils.select_time()
+        # or file selected using select_file_in_SWAN()
+        if isinstance(t, list): t = t[0]
+        if isinstance(path, list): path = path[0]
 
         # Fetch BPM positions and names in one go
         end_time = t + timedelta(seconds=1)
@@ -37,7 +35,7 @@ class BPMData:
         }
 
         # Extract BPM names and readings
-        BPM_names_np = BPM_data['BPM_names']['BFC.LHC:Mappings:fBPMNames_h'][1][0]
+        BPM_names = BPM_data['BPM_names']['BFC.LHC:Mappings:fBPMNames_h'][1][0]
         BPM_readings_H = BPM_data['BPM_pos_H']['BFC.LHC:OrbitAcq:positionsH'][1]
         BPM_readings_V = BPM_data['BPM_pos_V']['BFC.LHC:OrbitAcq:positionsV'][1]
 
@@ -45,82 +43,93 @@ class BPMData:
         df = pd.DataFrame({
             'X': BPM_readings_H[0],  # Access first (and only) reading by index 0
             'Y': BPM_readings_V[0],  # Access first reading by index 0
-            'NAME': BPM_names_np
+            'NAME': BPM_names
         })
 
         # Process data for both beams
-        df1 = tfs.read('/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/all_optics_B1.tfs')
+        df1 = tfs.read(path)
         df1 = df1[df1.KEYWORD.str.contains('MONITOR')]
         self.b1_positions = pd.merge(df, df1[['NAME', 'S']], on='NAME')
 
-        df2 = tfs.read('/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/all_optics_B4.tfs')
+        df2 = tfs.read(str(path).replace('B1', 'B4'))
         df2 = df2[df2.KEYWORD.str.contains('MONITOR')]
         self.b2_positions = pd.merge(df, df2[['NAME', 'S']], on='NAME')
 
 
 class CollimatorsData:
 
-    def __init__(self, spark, time):
+    def __init__(self, 
+                 spark, 
+                 time, 
+                 all_optics_path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/all_optics_B1.tfs',
+                 yaml_path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
 
         # initialise the logging
         self.ldb = pytimber.LoggingDB(spark_session=spark)
-        self.load_data(time)
+        self.load_data(time, all_optics_path, yaml_path)
 
-    def load_data(self, time):
+    def load_data(self, t, all_optics_path, yaml_path):
         
-        if isinstance(time, list):
-            # If time was selected using utils.select_time()
-            t = time[0]
-        else:
-            t = time
+        # If time was selected using utils.select_time()
+        # or files selected using select_file_in_SWAN()
+        if isinstance(t, list): t = t[0]
+        if isinstance(all_optics_path, list): all_optics_path = all_optics_path[0]
+        if isinstance(yaml_path, list): yaml_path = yaml_path[0]
 
-        # Load the file
-        collimators_path = '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'
-                
-        with open(collimators_path, 'r') as file:
+        # Load the file  
+        with open(yaml_path, 'r') as file:
             f = yaml.safe_load(file)
 
+        # Create a data frame for beam 1
         col_b1 = pd.DataFrame(f['collimators']['b1']).loc[['angle']].T
         col_b1 = col_b1.reset_index().rename(columns={'index': 'name'})
+        # Change the names to uppercase to facilitate searching
         col_b1['name'] = col_b1['name'].str.upper()
 
+        # Create a data frame for beam 2
         col_b2 = pd.DataFrame(f['collimators']['b2']).loc[['angle']].T
         col_b2 = col_b2.reset_index().rename(columns={'index': 'name'})
+        # Change the names to uppercase to facilitate searching
         col_b2['name'] = col_b2['name'].str.upper()
 
-        col_df1 = tfs.read('/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/all_optics_B1.tfs')
+        # Load all optics data to find collimator positions
+        col_df1 = tfs.read(all_optics_path)
+
         col_df1 = pd.merge(col_b1, col_df1, left_on='name', right_on='NAME')[['NAME', 'angle', 'S', 'L']]
+        # Make sure all the headers are lowercase (necessary for plotting)
         col_df1.columns = col_df1.columns.str.lower()
 
-        col_df2 = tfs.read('/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/MADX_thick/injection/all_optics_B4.tfs')
+        # Create a path for beam 2 by replacing B1 with B4
+        col_df2 = tfs.read(str(all_optics_path).replace('B1', 'B4'))
         col_df2 = pd.merge(col_b2, col_df2, left_on='name', right_on='NAME')[['NAME', 'angle', 'S', 'L']]
+        # Make sure all the headers are lowercase (necessary for plotting)
         col_df2.columns = col_df2.columns.str.lower()
 
-        # Step 1: Add an empty column to the DataFrame
-        col_df1['gap'] = np.nan
+        names_b1 = col_df1['name'].to_list()
+        for i, name in enumerate(names_b1): names_b1[i]=name+':MEAS_LVDT_GD'
 
-        # Step 2: Iterate over all rows and modify the new column's values
+        names_b2 = col_df2['name'].to_list()
+        for i, name in enumerate(names_b2): names_b2[i]=name+':MEAS_LVDT_GD'
+
+        col_df1_from_timber = self.ldb.get(names_b1, t, t+timedelta(seconds=1))
+        col_df2_from_timber = self.ldb.get(names_b2, t, t+timedelta(seconds=1))
+
+        # Iterate over all rows and modify the new column's values
         for index, row in col_df1.iterrows():
-            
-            name = str(row['name']+':MEAS_LVDT_GD')
-            col_gap = self.ldb.get(name, t, t+timedelta(seconds=1))
-
-            try: col_df1.at[index, 'gap'] = col_gap[name][1][0]/1e3
+            try:
+                name_to_search = str(row['name']+':MEAS_LVDT_GD')
+                col_df1.at[index, 'gap'] = col_df1_from_timber[name_to_search][1][0]/1e3
             except: continue
 
-        col_df2['gap'] = np.nan 
-
-        # Step 2: Iterate over all rows and modify the new column's values
+        # Iterate over all rows and modify the new column's values
         for index, row in col_df2.iterrows():
-            
-            name = str(row['name']+':MEAS_LVDT_GD')
-            col_gap = self.ldb.get(name, t, t+timedelta(seconds=1))
-            
-            try: col_df2.at[index, 'gap'] = col_gap[name][1][0]/1e3
+            try:
+                name_to_search = str(row['name']+':MEAS_LVDT_GD')
+                col_df2.at[index, 'gap'] = col_df2_from_timber[name_to_search][1][0]/1e3
             except: continue
 
-        self.b1_data = col_df1.copy()
-        self.b2_data = col_df2.copy()
+        self.b1_data = col_df1.dropna().copy()
+        self.b2_data = col_df2.dropna().copy()
         
     def process(self, twiss):
         
