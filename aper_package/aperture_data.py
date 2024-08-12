@@ -44,6 +44,9 @@ class Data:
         # Define gamma using loaded line
         self.gamma = self.line_b1.particle_ref.to_pandas()['gamma0'][0]
 
+        # Find knobs
+        self._define_knobs()
+
         # Twiss
         self.twiss()
 
@@ -51,6 +54,30 @@ class Data:
         self._define_nominal_crossing()
         self._distance_to_nominal('h')
         self._distance_to_nominal('v')
+
+    def _define_knobs(self):
+
+        # Find knobs
+        knobs = self.line_b1.vv.vars.keys()
+        knobs = [value for value in knobs if 'on_' in value]
+
+        values = []
+        for i in knobs:
+            values.append(self.line_b1.vv.get(i))
+
+        df = pd.DataFrame({'knob': knobs, 
+                  'initial value': values,
+                  'current value': values})
+        
+        self.knobs = df[~df.apply(lambda row: any(cell == {} for cell in row), axis=1)]
+
+    def reset_knobs(self):
+
+        for index, row in self.knobs.iterrows():
+            if row['current value'] != row['initial value']:
+                self.change_knob(row['knob'], row['initial value'])
+        
+        self.twiss()
 
     def _load_lines_data(self, path_b1: str) -> None:
         """Load lines data from a JSON file.
@@ -134,7 +161,7 @@ class Data:
         Process the twiss DataFrame to remove unnecessary elements and columns.
 
         Parameters:
-            twiss_df: DataFrame containing the twiss parameters.
+            twiss_df: DataFrame containing the twiss parametself.knobs['knob'] == knobers.
 
         Returns:
             Processed DataFrame with selected columns and without 'aper' and 'drift' elements.
@@ -354,3 +381,5 @@ class Data:
         
         self.line_b1.vars[knob] = value
         self.line_b2.vars[knob] = value
+
+        self.knobs.loc[self.knobs['knob'] == knob, 'current value'] = value

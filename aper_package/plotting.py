@@ -31,7 +31,7 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
     values = {}
 
     # Create a dropdown to select a knob
-    knob_dropdown = create_knob_dropdown()
+    knob_dropdown = create_knob_dropdown(data)
 
     # Button to add selection
     add_button = Button(description="Add", button_style='success')
@@ -41,6 +41,8 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
     apply_button = Button(description="Apply", button_style='primary')
     # Button to shift the graph
     cycle_button = Button(description="Cycle", style=widgets.ButtonStyle(button_color='pink'))
+    # Reset knobs
+    reset_button = Button(description="Reset knobs", button_style='warning')
 
     # To specify cycle start
     cycle_input = widgets.Text(
@@ -83,7 +85,7 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
 
     # Arrange knob dropdown and buttons in a horizontal layout
     more_controls = HBox(
-        [cycle_input, cycle_button],
+        [cycle_input, cycle_button, reset_button],
         layout=Layout(
             justify_content='space-around',  # Distribute space evenly
             align_items='center',            # Center align all items
@@ -95,7 +97,7 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
     
     # Combine everything into the main VBox layout
     everything = VBox(
-        [controls, more_controls, knob_box, graph_container],
+        [controls, knob_box, more_controls, graph_container],
         layout=Layout(
             justify_content='center',
             align_items='center',
@@ -114,8 +116,17 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
     remove_button.on_click(on_remove_button_clicked)
     apply_button.on_click(on_apply_button_clicked)
     cycle_button.on_click(on_cycle_button_clicked)
+    reset_button.on_click(on_reset_button_clicked)
 
     # Plot all traces
+    update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
+
+def on_reset_button_clicked(b):
+
+    # Re-twiss
+    global_data.reset_knobs()
+
+    # Update the figure
     update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
 
 def on_cycle_button_clicked(b):
@@ -320,16 +331,11 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
 
     return fig, visibility_b1, visibility_b2, row, col
 
-def create_knob_dropdown():
+def create_knob_dropdown(data):  
 
-    # List of knobs that can be adjusted
-    knobs = ['on_x1', 'on_x2h', 'on_x2v', 'on_x5', 'on_x8h', 'on_x8v',
-             'on_sep1', 'on_sep2h', 'on_sep2v', 'on_sep5', 'on_sep8h', 'on_sep8v',
-             'on_alice', 'on_lhcb']
-    
     # Dropdown widget for knob selection
     dropdown_widget = widgets.Dropdown(
-        options=knobs,
+        options=data.knobs['knob'].to_list(),
         description='Select knob:',
         disabled=False)
     
