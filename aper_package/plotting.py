@@ -11,7 +11,7 @@ from IPython.display import display
 
 def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, height=600, additional_traces=None):
 
-    global knob_dropdown, add_button, remove_button, apply_button, graph_container, knob_box
+    global knob_dropdown, add_button, remove_button, apply_button, graph_container, knob_box, cycle_button, cycle_input
     global values, selected_knobs, knob_widgets
     global global_data, global_plane, global_BPM_data, global_collimator_data
     global global_width, global_height, global_additional_traces
@@ -39,6 +39,17 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
     remove_button = Button(description="Remove", button_style='danger')
     # Button to apply selection and update graph
     apply_button = Button(description="Apply", button_style='primary')
+    # Button to shift the graph
+    cycle_button = Button(description="Cycle", style=widgets.ButtonStyle(button_color='pink'))
+
+    # To specify cycle start
+    cycle_input = widgets.Text(
+        value='',                  # Initial value (empty string)
+        description='First element:',      # Label for the widget
+        placeholder='e. g. ip3',  # Placeholder text when the input is empty
+        style={'description_width': 'initial'},  # Adjust the width of the description label
+        layout=widgets.Layout(width='300px')  # Set the width of the widget
+    )
 
     # Create an empty VBox container for the graph and widgets
     graph_container = VBox(layout=Layout(
@@ -69,10 +80,22 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
             border='solid 2px #ccc'
         )
     )
+
+    # Arrange knob dropdown and buttons in a horizontal layout
+    more_controls = HBox(
+        [cycle_input, cycle_button],
+        layout=Layout(
+            justify_content='space-around',  # Distribute space evenly
+            align_items='center',            # Center align all items
+            width='100%',
+            padding='10px',                  # Add padding around controls
+            border='solid 2px #ccc'
+        )
+    )
     
     # Combine everything into the main VBox layout
     everything = VBox(
-        [controls, knob_box, graph_container],
+        [controls, more_controls, knob_box, graph_container],
         layout=Layout(
             justify_content='center',
             align_items='center',
@@ -90,8 +113,19 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
     add_button.on_click(on_add_button_clicked)
     remove_button.on_click(on_remove_button_clicked)
     apply_button.on_click(on_apply_button_clicked)
+    cycle_button.on_click(on_cycle_button_clicked)
 
     # Plot all traces
+    update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
+
+def on_cycle_button_clicked(b):
+
+    first_element = cycle_input.value
+
+    # Re-twiss
+    global_data.cycle(first_element)
+    
+    # Update the figure
     update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
 
 def on_add_button_clicked(b):
@@ -276,7 +310,7 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
 
     # If BPM data was loaded from timber
     if BPM_data:
-        BPM_visibility, BPM_traces = plot_BPM_data(BPM_data, plane)
+        BPM_visibility, BPM_traces = plot_BPM_data(BPM_data, plane, data)
         for i in BPM_traces:
             fig.add_trace(i, row=row, col=col)
 
@@ -333,17 +367,19 @@ def update_layout(fig, plane, row, col, visibility_b1, visibility_b2):
                         method="update",
                         args=[{"visible": visibility_b2}])]))])
 
-def plot_BPM_data(data, plane):
+def plot_BPM_data(data, plane, twiss):
     
-    if plane == 'h': y_b1, y_b2 = data.b1_positions.X, data.b2_positions.X
-    elif plane == 'v': y_b1, y_b2 = data.b1_positions.Y, data.b2_positions.Y
+    data.process(twiss)
+
+    if plane == 'h': y_b1, y_b2 = data.b1.x, data.b2.x
+    elif plane == 'v': y_b1, y_b2 = data.b1.y, data.b2.y
 
     # Make sure the units are in meters like twiss data
-    b1 = go.Scatter(x=data.b1_positions.S, y=y_b1/1e6, mode='markers', 
-                          line=dict(color='blue'), text = data.b1_positions.NAME, name='BPM beam 1')
+    b1 = go.Scatter(x=data.b1.s, y=y_b1/1e6, mode='markers', 
+                          line=dict(color='blue'), text = data.b1.name, name='BPM beam 1')
     
-    b2 = go.Scatter(x=data.b2_positions.S, y=y_b2/1e6, mode='markers', 
-                          line=dict(color='red'), text = data.b2_positions.NAME, name='BPM beam 2')
+    b2 = go.Scatter(x=data.b2.s, y=y_b2/1e6, mode='markers', 
+                          line=dict(color='red'), text = data.b2.name, name='BPM beam 2')
     
     return np.full(2, True), [b1, b2]
 
