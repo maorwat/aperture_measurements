@@ -13,17 +13,17 @@ from aper_package.utils import shift_by
 class BPMData:
 
     def __init__(self, 
-                 spark,
-                 time):
+                 spark):
 
         # initialise the logging
         self.ldb = pytimber.LoggingDB(spark_session=spark)
-        self.load_data(time)
 
     def load_data(self, t):
         
         # If time was selected using utils.select_time()
         if isinstance(t, list): t = t[0]
+
+        print("Loading BPM data...")
 
         # Fetch BPM positions and names
         end_time = t + timedelta(seconds=1)
@@ -46,6 +46,8 @@ class BPMData:
             'name': BPM_names
         })
 
+        print("Done loading BPM data.")
+
     def process(self, twiss):
 
         # Find BPM positions using twiss data
@@ -55,23 +57,22 @@ class BPMData:
 class CollimatorsData:
 
     def __init__(self, 
-                 spark, 
-                 time,
+                 spark,
                  yaml_path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
 
         # initialise the logging
         self.ldb = pytimber.LoggingDB(spark_session=spark)
-        self.load_data(time, yaml_path)
+        self.yaml_path = yaml_path
 
-    def load_data(self, t, yaml_path):
+    def load_data(self, t):
         
         # If time was selected using utils.select_time()
         if isinstance(t, list): t = t[0]
         # or file selected using select_file_in_SWAN()
-        if isinstance(yaml_path, list): yaml_path = yaml_path[0]
+        if isinstance(self.yaml_path, list): self.yaml_path = self.yaml_path[0]
 
         # Load the file  
-        with open(yaml_path, 'r') as file:
+        with open(self.yaml_path, 'r') as file:
             f = yaml.safe_load(file)
 
         # Create a data frame for beam 1
@@ -88,6 +89,8 @@ class CollimatorsData:
 
         for i, name in enumerate(names_b1): names_b1[i]=name+':MEAS_LVDT_GD'
         for i, name in enumerate(names_b2): names_b2[i]=name+':MEAS_LVDT_GD'
+
+        print("Loading collimators data...")
 
         col_b1_from_timber = self.ldb.get(names_b1, t, t+timedelta(seconds=1))
         col_b2_from_timber = self.ldb.get(names_b2, t, t+timedelta(seconds=1))
@@ -112,6 +115,8 @@ class CollimatorsData:
         self.colx_b2 = col_b2[col_b2['angle']==0].dropna()
         self.coly_b1 = col_b1[col_b1['angle']==90].dropna()
         self.coly_b2 = col_b2[col_b2['angle']==90].dropna()
+
+        print("Done loading collimators data.")
         
     def process(self, twiss):
         

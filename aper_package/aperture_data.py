@@ -69,7 +69,9 @@ class Data:
                   'initial value': values,
                   'current value': values})
         
-        self.knobs = df[~df.apply(lambda row: any(cell == {} for cell in row), axis=1)]
+        df = df[~df.apply(lambda row: any(cell == {} for cell in row), axis=1)]
+
+        self.knobs = df.sort_values(by='knob', ascending=True).reset_index(drop=True)
 
     def reset_knobs(self):
 

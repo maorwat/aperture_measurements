@@ -3,15 +3,17 @@ sys.path.append('/eos/home-i03/m/morwat/.local/lib/python3.9/site-packages/')
 
 import numpy as np
 import pandas as pd
+from datetime import datetime
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText
+from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText, DatePicker, Text
 from IPython.display import display
 
-def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, height=600, additional_traces=None):
+def plot(data, plane, BPM_data = None, collimator_data = None, width=1600, height=600, additional_traces=None):
 
-    global knob_dropdown, add_button, remove_button, apply_button, graph_container, knob_box, cycle_button, cycle_input
+    global knob_dropdown, add_button, remove_button, apply_button, graph_container, knob_box
+    global cycle_button, cycle_input, date_picker, time_input, load_BPMs_button, load_cols_button
     global values, selected_knobs, knob_widgets
     global global_data, global_plane, global_BPM_data, global_collimator_data
     global global_width, global_height, global_additional_traces
@@ -19,8 +21,10 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
     # Set the arguments as global
     global_data = data
     global_plane = plane
+
     global_BPM_data = BPM_data
     global_collimator_data = collimator_data
+
     global_width = width
     global_height = height
     global_additional_traces = additional_traces
@@ -31,18 +35,53 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
     values = {}
 
     # Create a dropdown to select a knob
-    knob_dropdown = create_knob_dropdown(data)
+    knob_dropdown = widgets.Dropdown(
+        options=data.knobs['knob'].to_list(),
+        description='Select knob:',
+        disabled=False)
 
     # Button to add selection
-    add_button = Button(description="Add", button_style='success')
+    add_button = Button(description="Add", style=widgets.ButtonStyle(button_color='rgb(166, 216, 84)'))
     # Button to remove selection
-    remove_button = Button(description="Remove", button_style='danger')
+    remove_button = Button(description="Remove", style=widgets.ButtonStyle(button_color='rgb(237, 100, 90)'))
     # Button to apply selection and update graph
-    apply_button = Button(description="Apply", button_style='primary')
+    apply_button = Button(description="Apply", style=widgets.ButtonStyle(button_color='lightblue'))
     # Button to shift the graph
     cycle_button = Button(description="Cycle", style=widgets.ButtonStyle(button_color='pink'))
-    # Reset knobs
-    reset_button = Button(description="Reset knobs", button_style='warning')
+    # Button to reset knobs    
+    reset_button = Button(description="Reset knobs", style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)'))
+
+    # Set up event handlers
+    add_button.on_click(on_add_button_clicked)
+    remove_button.on_click(on_remove_button_clicked)
+    apply_button.on_click(on_apply_button_clicked)
+    cycle_button.on_click(on_cycle_button_clicked)
+    reset_button.on_click(on_reset_button_clicked)
+
+    # Buttons to load timber data
+    if BPM_data or collimator_data:
+        # Create date and time input widgets
+        date_picker = DatePicker(
+            description='Select Date:',
+            style={'description_width': 'initial'},
+            layout=Layout(width='300px')
+        )
+
+        time_input = Text(
+            description='Enter Time (HH:MM:SS):',
+            placeholder='10:53:15',
+            style={'description_width': 'initial'},
+            layout=Layout(width='300px')
+        )
+        timber_controls = [date_picker, time_input]
+    if BPM_data:
+        load_BPMs_button = Button(description="Load BPMs", style=widgets.ButtonStyle(button_color='pink'))
+        load_BPMs_button.on_click(on_load_BPMs_button_clicked)
+        timber_controls.append(load_BPMs_button)
+    if collimator_data:
+        load_cols_button = Button(description="Load collimators", style=widgets.ButtonStyle(button_color='pink'))
+        load_cols_button.on_click(on_load_cols_button_clicked)
+        timber_controls.append(load_cols_button)
 
     # To specify cycle start
     cycle_input = widgets.Text(
@@ -73,7 +112,7 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
 
     # Arrange knob dropdown and buttons in a horizontal layout
     controls = HBox(
-        [knob_dropdown, add_button, remove_button, apply_button],
+        [knob_dropdown, add_button, remove_button, apply_button, reset_button],
         layout=Layout(
             justify_content='space-around',  # Distribute space evenly
             align_items='center',            # Center align all items
@@ -85,7 +124,7 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
 
     # Arrange knob dropdown and buttons in a horizontal layout
     more_controls = HBox(
-        [cycle_input, cycle_button, reset_button],
+        [cycle_input, cycle_button]+timber_controls,
         layout=Layout(
             justify_content='space-around',  # Distribute space evenly
             align_items='center',            # Center align all items
@@ -94,7 +133,7 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
             border='solid 2px #ccc'
         )
     )
-    
+
     # Combine everything into the main VBox layout
     everything = VBox(
         [controls, knob_box, more_controls, graph_container],
@@ -103,7 +142,7 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
             align_items='center',
             width='80%',                     # Limit width to 80% of the page
             margin='0 auto',                 # Center the VBox horizontally
-            padding='20px',                  # Add padding around the whole container
+            padding='20px',                  # Add p0dding around the whole container
             border='solid 2px #ddd'
         )
     )
@@ -111,20 +150,74 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1000, heigh
     # Display the widgets and the graph
     display(everything)
 
-    # Set up event handlers
-    add_button.on_click(on_add_button_clicked)
-    remove_button.on_click(on_remove_button_clicked)
-    apply_button.on_click(on_apply_button_clicked)
-    cycle_button.on_click(on_cycle_button_clicked)
-    reset_button.on_click(on_reset_button_clicked)
-
     # Plot all traces
     update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
 
+def on_load_BPMs_button_clicked(b):
+
+    selected_date = date_picker.value
+    selected_time_str = time_input.value
+
+    if selected_date and selected_time_str:
+        try:
+            # Parse the time string to extract hours, minutes, seconds
+            selected_time = datetime.strptime(selected_time_str, '%H:%M:%S').time()
+            
+            # Create a datetime object
+            combined_datetime = datetime(
+                selected_date.year, selected_date.month, selected_date.day,
+                selected_time.hour, selected_time.minute, selected_time.second
+            )
+        except ValueError:
+            print("Invalid time format. Please use HH:MM:SS.")
+    else:
+        print("Please select both a date and a time.")
+
+    # Load BPM data
+    global_BPM_data.load_data(combined_datetime)
+
+    # Update the figure
+    update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
+
+def on_load_cols_button_clicked(b):
+
+    selected_date = date_picker.value
+    selected_time_str = time_input.value
+
+    if selected_date and selected_time_str:
+        try:
+            # Parse the time string to extract hours, minutes, seconds
+            selected_time = datetime.strptime(selected_time_str, '%H:%M:%S').time()
+            
+            # Create a datetime object
+            combined_datetime = datetime(
+                selected_date.year, selected_date.month, selected_date.day,
+                selected_time.hour, selected_time.minute, selected_time.second
+            )
+        except ValueError:
+            print("Invalid time format. Please use HH:MM:SS.")
+    else:
+        print("Please select both a date and a time.")
+
+    # Load BPM data
+    global_collimator_data.load_data(combined_datetime)
+
+    # Update the figure
+    update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
+
+
 def on_reset_button_clicked(b):
 
+    for knob in selected_knobs[:]:
+        selected_knobs.remove(knob)
+        del values[knob]  # Remove the value of the knob
+        del knob_widgets[knob]  # Remove the widget
+        
     # Re-twiss
     global_data.reset_knobs()
+
+    # Update selected knobs and display value
+    update_knob_box()
 
     # Update the figure
     update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
@@ -153,7 +246,7 @@ def on_add_button_clicked(b):
 
         # Create a new FloatText widget for the selected knob
         knob_widget = FloatText(
-            value=1.0,
+            value=global_data.knobs[global_data.knobs['knob']==knob]['initial value'],
             description=f'{knob}',
             disabled=False,
             layout=Layout(width='270px')
@@ -283,7 +376,7 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
         visibility_b2 = np.append(visibility_b2, np.logical_not(collimator_visibility))
 
     # If collimators were loaded from timber
-    if collimator_data:
+    if collimator_data and hasattr(collimator_data, 'colx_b1'):
         collimator_visibility, collimator = plot_collimators_from_timber(collimator_data, data, plane)
         for i in collimator:
             fig.add_trace(i, row=row, col=col)
@@ -320,7 +413,7 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
     visibility_b2 = np.append(visibility_b2, envelope_visibility)
 
     # If BPM data was loaded from timber
-    if BPM_data:
+    if BPM_data and hasattr(BPM_data, 'data'):
         BPM_visibility, BPM_traces = plot_BPM_data(BPM_data, plane, data)
         for i in BPM_traces:
             fig.add_trace(i, row=row, col=col)
@@ -330,16 +423,6 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
         visibility_b2 = np.append(visibility_b2, BPM_visibility)
 
     return fig, visibility_b1, visibility_b2, row, col
-
-def create_knob_dropdown(data):  
-
-    # Dropdown widget for knob selection
-    dropdown_widget = widgets.Dropdown(
-        options=data.knobs['knob'].to_list(),
-        description='Select knob:',
-        disabled=False)
-    
-    return dropdown_widget
 
 def update_layout(fig, plane, row, col, visibility_b1, visibility_b2):
 
