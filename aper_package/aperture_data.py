@@ -1,6 +1,3 @@
-import sys
-sys.path.append('/eos/home-i03/m/morwat/.local/lib/python3.9/site-packages/')
-
 import numpy as np
 import pandas as pd
 import tfs
@@ -20,6 +17,7 @@ class Data:
     
     def __init__(self,
                  path_b1: str,
+                 path_b2: Optional[str] = None,
                  n: Optional[float] = 0,
                  emitt: Optional[str] = 3.5e-6):
         
@@ -39,7 +37,7 @@ class Data:
         self.length = 26658.88318
 
         # Load line data
-        self.line_b1, self.line_b2 = self._load_lines_data(path_b1)
+        self.line_b1, self.line_b2 = self._load_lines_data(path_b1, path_b2)
 
         # Define gamma using loaded line
         self.gamma = self.line_b1.particle_ref.to_pandas()['gamma0'][0]
@@ -81,26 +79,26 @@ class Data:
         
         self.twiss()
 
-    def _load_lines_data(self, path_b1: str) -> None:
+    def _load_lines_data(self, path_b1: str, path_b2: str) -> None:
         """Load lines data from a JSON file.
         
         Parameters:
             path1: Path to the line JSON file for beam 1.
             title: Prompt dispolayed upon file selection.
         """
-        
-        path_b2 = str(path_b1).replace('b1', 'b2')
+        if not path_b2:
+            path_b2 = str(path_b1).replace('b1', 'b2')
 
         try:
             return xt.Line.from_json(path_b1), xt.Line.from_json(path_b2)
         except FileNotFoundError:
             raise FileNotFoundError(f"File {path_b1} not found.")
 
-    def load_aperture(self, path_b1: str) -> None:
+    def load_aperture(self, path_b1: str, path_b2: Optional[str]=None) -> None:
         # Load and process aperture data
-        self.aper_b1, self.aper_b2 = self._load_aperture_data(path_b1)
+        self.aper_b1, self.aper_b2 = self._load_aperture_data(path_b1, path_b2)
     
-    def _load_aperture_data(self, path_b1) -> pd.DataFrame:
+    def _load_aperture_data(self, path_b1, path_b2) -> pd.DataFrame:
         """Load and process aperture data from a file.
         
         Parameters:
@@ -111,7 +109,8 @@ class Data:
             Processeed aperture DataFrames for beams 1 and 2, respectively.
         """
         # Create path for the aperture file for b2
-        path_b2 = str(path_b1).replace('B1', 'B4')
+        if not path_b2:
+            path_b2 = str(path_b1).replace('B1', 'B4')
 
         try:
             # Drop uneeded columns
@@ -186,7 +185,7 @@ class Data:
         """
         # Find the element to be set as the new zero
         try:
-            element_positions = self.tw_b1.loc[self.tw_b1['name'] == self.first_element, 's'].values
+            element_positions = self.tw_b1.loc[self.tw_b1['name'] == self.first_element]['s'].values
         except ValueError:
             raise ValueError(f"Element '{self.first_element}' not found in the DataFrame. Aperture and drift elements are removed.")
 

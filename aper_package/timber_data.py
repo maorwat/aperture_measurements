@@ -92,7 +92,7 @@ class CollimatorsData:
 
         print("Loading collimators data...")
 
-        col_b1_from_timber = self.ldb.get(names_b1, t, t+timedelta(seconds=1))
+        col_b1_from_timber = self.ldb.get(names_b1, t, t+timedelta(seconds=1)) 
         col_b2_from_timber = self.ldb.get(names_b2, t, t+timedelta(seconds=1))
 
         # Iterate over all rows and add the gap column's values

@@ -1,19 +1,18 @@
-import sys
-sys.path.append('/eos/home-i03/m/morwat/.local/lib/python3.9/site-packages/')
-
 import numpy as np
 import pandas as pd
 from datetime import datetime
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText, DatePicker, Text
+from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText, DatePicker, Text, FileUpload
 from IPython.display import display
+
+from aper_package.figure_data import *
 
 def plot(data, plane, BPM_data = None, collimator_data = None, width=1600, height=600, additional_traces=None):
 
     global knob_dropdown, add_button, remove_button, apply_button, graph_container, knob_box
-    global cycle_button, cycle_input, date_picker, time_input, load_BPMs_button, load_cols_button
+    global cycle_button, cycle_input, date_picker, time_input, load_BPMs_button, load_cols_button, envelope_button, envelope_input
     global values, selected_knobs, knob_widgets
     global global_data, global_plane, global_BPM_data, global_collimator_data
     global global_width, global_height, global_additional_traces
@@ -34,11 +33,110 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1600, heigh
     knob_widgets = {}
     values = {}
 
-    # Create a dropdown to select a knob
-    knob_dropdown = widgets.Dropdown(
-        options=data.knobs['knob'].to_list(),
-        description='Select knob:',
-        disabled=False)
+    # Define widgets
+    add_button, remove_button, apply_button, cycle_button, reset_button, envelope_button = define_buttons()
+    knob_dropdown, knob_box, cycle_input, envelope_input, graph_container = define_widgets()
+
+    # Set up event handlers
+    add_button.on_click(on_add_button_clicked)
+    remove_button.on_click(on_remove_button_clicked)
+    apply_button.on_click(on_apply_button_clicked)
+    cycle_button.on_click(on_cycle_button_clicked)
+    reset_button.on_click(on_reset_button_clicked)
+    envelope_button.on_click(on_envelope_button_clicked)
+
+    # Set the order of some of the controls
+    knob_selection_controls = [knob_dropdown, add_button, remove_button, apply_button, reset_button]
+    cycle_controls = [cycle_input, cycle_button]
+    envelope_controls = [envelope_input, envelope_button]
+
+    # Create an empty list for timber controls
+    timber_controls = []
+    # Only add timber buttons if given as an argument
+    if BPM_data or collimator_data:
+
+        if BPM_data:
+            load_BPMs_button = Button(description="Load BPMs", style=widgets.ButtonStyle(button_color='pink'))
+            load_BPMs_button.on_click(on_load_BPMs_button_clicked)
+            timber_controls.append(load_BPMs_button)
+        if collimator_data:
+            load_cols_button = Button(description="Load collimators", style=widgets.ButtonStyle(button_color='pink'))
+            load_cols_button.on_click(on_load_cols_button_clicked)
+            timber_controls.append(load_cols_button)
+
+        # Time selection widgets
+        date_picker, time_input, time_controls = define_time_widgets()
+
+        # Define layout depending if timber buttons present or not
+        first_row_controls = cycle_controls+knob_selection_controls
+        second_row_controls = envelope_controls+time_controls+timber_controls
+    else:
+        first_row_controls = knob_selection_controls
+        second_row_controls = cycle_controls+envelope_controls
+
+    # Put all the widgets together into a nice layout
+    everything = define_widget_layout(first_row_controls, second_row_controls)
+
+    # Display the widgets and the graph
+    display(everything)
+
+    # Plot all traces
+    update_graph()
+
+def define_widget_layout(first_row_controls, second_row_controls):
+
+        # Arrange knob dropdown and buttons in a horizontal layout
+    controls = HBox(
+        first_row_controls,
+        layout=Layout(
+            justify_content='space-around',  # Distribute space evenly
+            align_items='center',            # Center align all items
+            width='100%',
+            padding='10px',                  # Add padding around controls
+            border='solid 2px #ccc'))
+
+    # Arrange knob dropdown and buttons in a horizontal layout
+    more_controls = HBox(
+        second_row_controls,
+        layout=Layout(
+            justify_content='space-around',  # Distribute space evenly
+            align_items='center',            # Center align all items
+            width='100%',
+            padding='10px',                  # Add padding around controls
+            border='solid 2px #ccc'))
+
+    # Combine everything into the main VBox layout
+    everything = VBox(
+        [controls, knob_box, more_controls, graph_container],
+        layout=Layout(
+            justify_content='center',
+            align_items='center',
+            width='80%',                     # Limit width to 80% of the page
+            margin='0 auto',                 # Center the VBox horizontally
+            padding='20px',                  # Add p0dding around the whole container
+            border='solid 2px #ddd'))
+
+    return everything
+
+def define_time_widgets():
+
+    # Create date and time input widgets
+    date_picker = DatePicker(
+            description='Select Date:',
+            style={'description_width': 'initial'},
+            layout=Layout(width='300px'))
+    
+    time_input = Text(
+            description='Enter Time (HH:MM:SS):',
+            placeholder='10:53:15',
+            style={'description_width': 'initial'},
+            layout=Layout(width='300px'))
+    
+    time_controls = [date_picker, time_input]
+
+    return date_picker, time_input, time_controls
+
+def define_buttons():
 
     # Button to add selection
     add_button = Button(description="Add", style=widgets.ButtonStyle(button_color='rgb(166, 216, 84)'))
@@ -50,56 +148,18 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1600, heigh
     cycle_button = Button(description="Cycle", style=widgets.ButtonStyle(button_color='pink'))
     # Button to reset knobs    
     reset_button = Button(description="Reset knobs", style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)'))
+    # Button to change envelope size
+    envelope_button = Button(description="Apply", style=widgets.ButtonStyle(button_color='pink'))
 
-    # Set up event handlers
-    add_button.on_click(on_add_button_clicked)
-    remove_button.on_click(on_remove_button_clicked)
-    apply_button.on_click(on_apply_button_clicked)
-    cycle_button.on_click(on_cycle_button_clicked)
-    reset_button.on_click(on_reset_button_clicked)
+    return add_button, remove_button, apply_button, cycle_button, reset_button, envelope_button
 
-    # Buttons to load timber data
-    if BPM_data or collimator_data:
-        # Create date and time input widgets
-        date_picker = DatePicker(
-            description='Select Date:',
-            style={'description_width': 'initial'},
-            layout=Layout(width='300px')
-        )
+def define_widgets():
 
-        time_input = Text(
-            description='Enter Time (HH:MM:SS):',
-            placeholder='10:53:15',
-            style={'description_width': 'initial'},
-            layout=Layout(width='300px')
-        )
-        timber_controls = [date_picker, time_input]
-    if BPM_data:
-        load_BPMs_button = Button(description="Load BPMs", style=widgets.ButtonStyle(button_color='pink'))
-        load_BPMs_button.on_click(on_load_BPMs_button_clicked)
-        timber_controls.append(load_BPMs_button)
-    if collimator_data:
-        load_cols_button = Button(description="Load collimators", style=widgets.ButtonStyle(button_color='pink'))
-        load_cols_button.on_click(on_load_cols_button_clicked)
-        timber_controls.append(load_cols_button)
-
-    # To specify cycle start
-    cycle_input = widgets.Text(
-        value='',                  # Initial value (empty string)
-        description='First element:',      # Label for the widget
-        placeholder='e. g. ip3',  # Placeholder text when the input is empty
-        style={'description_width': 'initial'},  # Adjust the width of the description label
-        layout=widgets.Layout(width='300px')  # Set the width of the widget
-    )
-
-    # Create an empty VBox container for the graph and widgets
-    graph_container = VBox(layout=Layout(
-        justify_content='center',
-        align_items='center',
-        width='100%',
-        padding='10px',
-        border='solid 2px #eee'
-    ))
+    # Create a dropdown to select a knob
+    knob_dropdown = widgets.Dropdown(
+        options=global_data.knobs['knob'].to_list(),
+        description='Select knob:',
+        disabled=False)
     
     # Create a box to store selected knobs
     knob_box = VBox(layout=Layout(
@@ -107,51 +167,41 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1600, heigh
         align_items='center',
         width='100%',
         padding='10px',
-        border='solid 2px #eee'
-    ))
+        border='solid 2px #eee'))
 
-    # Arrange knob dropdown and buttons in a horizontal layout
-    controls = HBox(
-        [knob_dropdown, add_button, remove_button, apply_button, reset_button],
-        layout=Layout(
-            justify_content='space-around',  # Distribute space evenly
-            align_items='center',            # Center align all items
-            width='100%',
-            padding='10px',                  # Add padding around controls
-            border='solid 2px #ccc'
-        )
-    )
+    # Create a text widget to specify cycle start
+    cycle_input = widgets.Text(
+        value='',                  # Initial value (empty string)
+        description='First element:',      # Label for the widget
+        placeholder='e. g. ip3',  # Placeholder text when the input is empty
+        style={'description_width': 'initial'},  # Adjust the width of the description label
+        layout=widgets.Layout(width='300px'))  # Set the width of the widget
 
-    # Arrange knob dropdown and buttons in a horizontal layout
-    more_controls = HBox(
-        [cycle_input, cycle_button]+timber_controls,
-        layout=Layout(
-            justify_content='space-around',  # Distribute space evenly
-            align_items='center',            # Center align all items
-            width='100%',
-            padding='10px',                  # Add padding around controls
-            border='solid 2px #ccc'
-        )
-    )
+    # Create a float widget to specify envelope size
+    envelope_input = widgets.FloatText(
+            value=global_data.n,                  # Initial value (empty string)
+            description='Size of envelope [σ]:',      # Label for the widget 
+            style={'description_width': 'initial'},  # Adjust the width of the description label
+            layout=widgets.Layout(width='300px'))  # Set the width of the widget
+        
+    # Create an empty VBox container for the graph
+    graph_container = VBox(layout=Layout(
+        justify_content='center',
+        align_items='center',
+        width='100%',
+        padding='10px',
+        border='solid 2px #eee'))
+    
+    return knob_dropdown, knob_box, cycle_input, envelope_input, graph_container
 
-    # Combine everything into the main VBox layout
-    everything = VBox(
-        [controls, knob_box, more_controls, graph_container],
-        layout=Layout(
-            justify_content='center',
-            align_items='center',
-            width='80%',                     # Limit width to 80% of the page
-            margin='0 auto',                 # Center the VBox horizontally
-            padding='20px',                  # Add p0dding around the whole container
-            border='solid 2px #ddd'
-        )
-    )
+def on_envelope_button_clicked(b):
 
-    # Display the widgets and the graph
-    display(everything)
+    selected_size = envelope_input.value
 
-    # Plot all traces
-    update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
+    global_data.envelope(selected_size)
+
+    # Update the figure
+    update_graph()
 
 def on_load_BPMs_button_clicked(b):
 
@@ -177,7 +227,7 @@ def on_load_BPMs_button_clicked(b):
     global_BPM_data.load_data(combined_datetime)
 
     # Update the figure
-    update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
+    update_graph()
 
 def on_load_cols_button_clicked(b):
 
@@ -203,8 +253,7 @@ def on_load_cols_button_clicked(b):
     global_collimator_data.load_data(combined_datetime)
 
     # Update the figure
-    update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
-
+    update_graph()
 
 def on_reset_button_clicked(b):
 
@@ -220,7 +269,7 @@ def on_reset_button_clicked(b):
     update_knob_box()
 
     # Update the figure
-    update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
+    update_graph()
 
 def on_cycle_button_clicked(b):
 
@@ -230,7 +279,7 @@ def on_cycle_button_clicked(b):
     global_data.cycle(first_element)
     
     # Update the figure
-    update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
+    update_graph()
 
 def on_add_button_clicked(b):
 
@@ -273,20 +322,6 @@ def on_remove_button_clicked(b):
         # Update selected knobs and display value
         update_knob_box()
         
-def update_knob_box():
-    """
-    Function to update the knob_box layout
-    """
-    # Group the widgets into sets of three per row
-    rows = []
-    for i in range(0, len(selected_knobs), 3):
-        row = HBox([knob_widgets[knob] for knob in selected_knobs[i:i+3]],
-                   layout=Layout(align_items='flex-start'))
-        rows.append(row)
-
-    # Update the knob_box with the new rows
-    knob_box.children = rows
-
 def on_apply_button_clicked(b):
     """
     Function to apply changes and update the graph
@@ -299,37 +334,23 @@ def on_apply_button_clicked(b):
     global_data.twiss()
     
     # Update the figure
-    update_graph(global_data, global_plane, global_BPM_data, global_collimator_data, global_additional_traces)
-
-def update_graph(data, plane, BPM_data, collimator_data, additional_traces):
-    """
-    Function to update the graph
-    """
-    # Create figure
-    fig, visibility_b1, visibility_b2, row, col = create_figure(data, plane, BPM_data, collimator_data, additional_traces)
-    # Update figure layout
-    update_layout(fig, plane, row, col, visibility_b1, visibility_b2)
-    
-    # Change to a widget
-    fig_widget = go.FigureWidget(fig)
-    # Put the figure in the graph container
-    graph_container.children = [fig_widget]
+    update_graph()
         
-def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
+def create_figure():
 
     # These correspond to swapping between visibilities of aperture/collimators for beam 1 and 2
     visibility_b1 = np.array([], dtype=bool)
     visibility_b2 = np.array([], dtype=bool)
 
     # If thick machine elements are loaded
-    if hasattr(data, 'elements'):
+    if hasattr(global_data, 'elements'):
 
         # Create 2 subplots: for elements and the plot
         fig = make_subplots(rows=2, cols=1, row_heights=[0.2, 0.8], shared_xaxes=True)
         # Update layout of the upper plot (machine components plot)
         fig.update_yaxes(range=[-1, 1], showticklabels=False, showline=False, row=1, col=1)
         fig.update_xaxes(showticklabels=False, showline=False, row=1, col=1)
-        elements_visibility, elements = plot_machine_components(data)
+        elements_visibility, elements = plot_machine_components(global_data)
 
         for i in elements:
             fig.add_trace(i, row=1, col=1)
@@ -349,15 +370,15 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
         row, col = 1, 1
 
     # If any additional traces were given as an argument
-    if additional_traces:
-        for i in additional_traces:
+    if global_additional_traces:
+        for i in global_additional_traces:
             fig.add_trace(i, row=row, col=col)
             visibility_b1 = np.append(visibility_b1, True)
             visibility_b2 = np.append(visibility_b2, True)
 
     # If there is aperture data
-    if hasattr(data, 'aper_b1'):
-        aper_visibility, apertures = plot_aperture(data, plane)
+    if hasattr(global_data, 'aper_b1'):
+        aper_visibility, apertures = plot_aperture(global_data, global_plane)
         for i in apertures:
             fig.add_trace(i, row=row, col=col)
 
@@ -366,8 +387,8 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
         visibility_b2 = np.append(visibility_b2, np.logical_not(aper_visibility))
 
     # If there are collimators loaded from yaml file
-    if hasattr(data, 'colx_b1'):
-        collimator_visibility, collimator = plot_collimators_from_yaml(data, plane)
+    if hasattr(global_data, 'colx_b1'):
+        collimator_visibility, collimator = plot_collimators_from_yaml(global_data, global_plane)
         for i in collimator:
             fig.add_trace(i, row=row, col=col)
 
@@ -376,8 +397,8 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
         visibility_b2 = np.append(visibility_b2, np.logical_not(collimator_visibility))
 
     # If collimators were loaded from timber
-    if collimator_data and hasattr(collimator_data, 'colx_b1'):
-        collimator_visibility, collimator = plot_collimators_from_timber(collimator_data, data, plane)
+    if global_collimator_data and hasattr(global_collimator_data, 'colx_b1'):
+        collimator_visibility, collimator = plot_collimators_from_timber(global_collimator_data, global_data, global_plane)
         for i in collimator:
             fig.add_trace(i, row=row, col=col)
 
@@ -386,7 +407,7 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
         visibility_b2 = np.append(visibility_b2, np.logical_not(collimator_visibility))
 
     # Add beam positions from twiss data
-    beam_visibility, beams = plot_beam_positions(data, plane)
+    beam_visibility, beams = plot_beam_positions(global_data, global_plane)
     for i in beams:
         fig.add_trace(i, row=row, col=col)
 
@@ -395,7 +416,7 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
     visibility_b2 = np.append(visibility_b2, beam_visibility)
 
     # Add nominal beam positions
-    nominal_beam_visibility, nominal_beams = plot_nominal_beam_positions(data, plane)
+    nominal_beam_visibility, nominal_beams = plot_nominal_beam_positions(global_data, global_plane)
     for i in nominal_beams:
         fig.add_trace(i, row=row, col=col)
 
@@ -404,7 +425,7 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
     visibility_b2 = np.append(visibility_b2, nominal_beam_visibility)
 
     # Add envelopes
-    envelope_visibility, envelope = plot_envelopes(data, plane)
+    envelope_visibility, envelope = plot_envelopes(global_data, global_plane)
     for i in envelope:
         fig.add_trace(i, row=row, col=col)
     
@@ -413,8 +434,8 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
     visibility_b2 = np.append(visibility_b2, envelope_visibility)
 
     # If BPM data was loaded from timber
-    if BPM_data and hasattr(BPM_data, 'data'):
-        BPM_visibility, BPM_traces = plot_BPM_data(BPM_data, plane, data)
+    if global_BPM_data and hasattr(global_BPM_data, 'data'):
+        BPM_visibility, BPM_traces = plot_BPM_data(global_BPM_data, global_plane, global_data)
         for i in BPM_traces:
             fig.add_trace(i, row=row, col=col)
 
@@ -422,9 +443,37 @@ def create_figure(data, plane, BPM_data, collimator_data, additional_traces):
         visibility_b1 = np.append(visibility_b1, BPM_visibility)
         visibility_b2 = np.append(visibility_b2, BPM_visibility)
 
-    return fig, visibility_b1, visibility_b2, row, col
+    return fig, row, col, visibility_b1, visibility_b2
 
-def update_layout(fig, plane, row, col, visibility_b1, visibility_b2):
+def update_knob_box():
+    """
+    Function to update the knob_box layout
+    """
+    # Group the widgets into sets of three per row
+    rows = []
+    for i in range(0, len(selected_knobs), 3):
+        row = HBox([knob_widgets[knob] for knob in selected_knobs[i:i+3]],
+                   layout=Layout(align_items='flex-start'))
+        rows.append(row)
+
+    # Update the knob_box with the new rows
+    knob_box.children = rows
+    
+def update_graph():
+    """
+    Function to update the graph
+    """
+    # Create figure
+    fig, row, col, visibility_b1, visibility_b2 = create_figure()
+    # Update figure layout
+    update_layout(fig, row, col, visibility_b1, visibility_b2)
+    
+    # Change to a widget
+    fig_widget = go.FigureWidget(fig)
+    # Put the figure in the graph container
+    graph_container.children = [fig_widget]
+
+def update_layout(fig, row, col, visibility_b1, visibility_b2):
 
     # Set layout
     fig.update_layout(height=global_height, width=global_width, showlegend=False, xaxis=dict(tickformat=','), yaxis=dict(tickformat=','), plot_bgcolor='white')
@@ -433,8 +482,8 @@ def update_layout(fig, plane, row, col, visibility_b1, visibility_b2):
     fig.update_xaxes(title_text="s [m]", row=row, col=col)
 
     # Change y limits and labels
-    if plane == 'h': title = 'x [m]'
-    elif plane == 'v': title = 'y [m]'
+    if global_plane == 'h': title = 'x [m]'
+    elif global_plane == 'v': title = 'y [m]'
     fig.update_yaxes(title_text=title, range = [-0.05, 0.05], row=row, col=col)
 
     # If aperture/collimators were loaded add buttons to switch between beam 1 and beam 2
@@ -455,202 +504,3 @@ def update_layout(fig, plane, row, col, visibility_b1, visibility_b2):
                     dict(label="Beam 2 aperture/collimation",
                         method="update",
                         args=[{"visible": visibility_b2}])]))])
-
-def plot_BPM_data(data, plane, twiss):
-    
-    data.process(twiss)
-
-    if plane == 'h': y_b1, y_b2 = data.b1.x, data.b2.x
-    elif plane == 'v': y_b1, y_b2 = data.b1.y, data.b2.y
-
-    # Make sure the units are in meters like twiss data
-    b1 = go.Scatter(x=data.b1.s, y=y_b1/1e6, mode='markers', 
-                          line=dict(color='blue'), text = data.b1.name, name='BPM beam 1')
-    
-    b2 = go.Scatter(x=data.b2.s, y=y_b2/1e6, mode='markers', 
-                          line=dict(color='red'), text = data.b2.name, name='BPM beam 2')
-    
-    return np.full(2, True), [b1, b2]
-
-def plot_machine_components(data):
-
-    # Specify the elements to plot and corresponding colors
-    objects = ["SBEND", "COLLIMATOR", "SEXTUPOLE", "RBEND", "QUADRUPOLE"]
-    colors = ['lightblue', 'black', 'hotpink', 'green', 'red']
-
-    # Array to store visibility of the elements
-    visibility_arr = np.array([], dtype=bool)
-
-    elements = []
-
-    # Iterate over all object types
-    for n, obj in enumerate(objects):
-            
-        obj_df = data.elements[data.elements['KEYWORD'] == obj]
-            
-        # Add elements to the plot
-        for i in range(obj_df.shape[0]):
-
-            x0, x1 = obj_df.iloc[i]['S']-obj_df.iloc[i]['L']/2, obj_df.iloc[i]['S']+obj_df.iloc[i]['L']/2                
-            if obj=='QUADRUPOLE': y0, y1 = 0, np.sign(obj_df.iloc[i]['K1L']).astype(int)                    
-            else: y0, y1 = -0.5, 0.5
-
-            element = go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], fill="toself", mode='lines',
-                             fillcolor=colors[n], line=dict(color=colors[n]), name=obj_df.iloc[i]['NAME'])
-
-            elements.append(element)
-
-        # Append to always show the elements
-        visibility_arr = np.append(visibility_arr, np.full(obj_df.shape[0], True))
-        
-    return visibility_arr, elements
-
-def plot_collimators_from_yaml(data, plane):
-    
-    visibility_arr_b1, collimators = plot_collimators(data, plane)
-    
-    return visibility_arr_b1, collimators
-
-def plot_collimators_from_timber(collimator_data, data, plane):
-    
-    collimator_data.process(data)
-    
-    visibility_arr_b1, processed_collimator_data = plot_collimators(collimator_data, plane)
-    
-    return visibility_arr_b1, processed_collimator_data
-
-def plot_collimators(data, plane):
-
-    if plane == 'h': df_b1, df_b2 = data.colx_b1, data.colx_b2
-    elif plane == 'v': df_b1, df_b2 = data.coly_b1, data.coly_b2
-
-    # Create empty lists for traces
-    collimators = []
-
-    # Plot
-    for df, vis in zip([df_b1, df_b2], [True, False]):
-
-        for i in range(df.shape[0]):
-            x0, y0b, y0t, x1, y1 = df.s.iloc[i] - 0.5, df.bottom_gap_col.iloc[i], df.top_gap_col.iloc[i], df.s.iloc[i] + 0.5, 0.1
-
-            top_col = go.Scatter(x=[x0, x0, x1, x1], y=[y0t, y1, y1, y0t], fill="toself", mode='lines',
-                            fillcolor='black', line=dict(color='black'), name=df.name.iloc[i], visible=vis)
-            bottom_col = go.Scatter(x=[x0, x0, x1, x1], y=[y0b, -y1, -y1, y0b], fill="toself", mode='lines',
-                            fillcolor='black', line=dict(color='black'), name=df.name.iloc[i], visible=vis)
-            
-            collimators.append(top_col)
-            collimators.append(bottom_col)
-        
-    # As default show only beam 1 collimators
-    visibility_arr_b1 = np.concatenate((np.full(df_b1.shape[0]*2, True), np.full(df_b2.shape[0]*2, False)))
-
-    return visibility_arr_b1, collimators
-
-def plot_envelopes(data, plane):
-
-    # Define hover template with customdata
-    hover_template = ("s: %{x} [m]<br>"
-                            "x: %{y} [m]<br>"
-                            "element: %{text}<br>"
-                            "distance from nominal: %{customdata} [mm]")
-
-    if plane == 'h':
-
-        upper_b1 = go.Scatter(x=data.tw_b1.s, y=data.tw_b1.x_up, mode='lines', 
-                                  text = data.tw_b1.name, name='Upper envelope beam 1', 
-                                  fill=None, line=dict(color='rgba(0,0,255,0)'),
-                                  customdata=data.tw_b1.x_from_nom_to_top, hovertemplate=hover_template)
-        lower_b1 = go.Scatter(x=data.tw_b1.s, y=data.tw_b1.x_down, mode='lines', 
-                                  text = data.tw_b1.name, name='Lower envelope beam 1', 
-                                  line=dict(color='rgba(0,0,255,0)'), fill='tonexty', fillcolor='rgba(0,0,255,0.1)',
-                                  customdata=data.tw_b1.x_from_nom_to_bottom, hovertemplate=hover_template)
-        upper_b2 = go.Scatter(x=data.tw_b2.s, y=data.tw_b2.x_up, mode='lines', 
-                                  text = data.tw_b2.name, name='Upper envelope beam 2', 
-                                  fill=None, line=dict(color='rgba(255,0,0,0)'),
-                                  customdata=data.tw_b2.x_from_nom_to_top, hovertemplate=hover_template)
-        lower_b2 = go.Scatter(x=data.tw_b2.s, y=data.tw_b2.x_down, mode='lines', 
-                                  text = data.tw_b2.name, name='Lower envelope beam 2', 
-                                  line=dict(color='rgba(255,0,0,0)'), fill='tonexty', fillcolor='rgba(255,0,0,0.1)', 
-                                  customdata=data.tw_b2.x_from_nom_to_bottom, hovertemplate=hover_template)
-        
-    elif plane == 'v':
-
-        upper_b1 = go.Scatter(x=data.tw_b1.s, y=data.tw_b1.y_up, mode='lines', 
-                                  text = data.tw_b1.name, name='Upper envelope beam 1', 
-                                  fill=None, line=dict(color='rgba(0,0,255,0)'),
-                                  customdata=data.tw_b1.y_from_nom_to_top, hovertemplate=hover_template)
-        lower_b1 = go.Scatter(x=data.tw_b1.s, y=data.tw_b1.y_down, mode='lines', 
-                                  text = data.tw_b1.name, name='Lower envelope beam 1', 
-                                  line=dict(color='rgba(0,0,255,0)'), fill='tonexty', fillcolor='rgba(0,0,255,0.1)',
-                                  customdata=data.tw_b1.y_from_nom_to_bottom, hovertemplate=hover_template)
-        upper_b2 = go.Scatter(x=data.tw_b2.s, y=data.tw_b2.y_up, mode='lines', 
-                                  text = data.tw_b2.name, name='Upper envelope beam 2', 
-                                  fill=None, line=dict(color='rgba(255,0,0,0)'),
-                                  customdata=data.tw_b2.y_from_nom_to_top, hovertemplate=hover_template)
-        lower_b2 = go.Scatter(x=data.tw_b2.s, y=data.tw_b2.y_down, mode='lines', 
-                                  text = data.tw_b2.name, name='Lower envelope beam 2', 
-                                  line=dict(color='rgba(255,0,0,0)'), fill='tonexty', fillcolor='rgba(255,0,0,0.1)',
-                                  customdata=data.tw_b2.y_from_nom_to_bottom, hovertemplate=hover_template)
-        
-    visibility = np.full(4, True)
-    traces = [upper_b1, lower_b1, upper_b2, lower_b2]
-
-    return visibility, traces
-
-def plot_beam_positions(data, plane):
-
-    if plane == 'h': y_b1, y_b2 = data.tw_b1.x, data.tw_b2.x
-    elif plane == 'v': y_b1, y_b2 = data.tw_b1.y, data.tw_b2.y
-
-    b1 = go.Scatter(x=data.tw_b1.s, y=y_b1, mode='lines', line=dict(color='blue'), text = data.tw_b1.name, name='Beam 1')
-    b2 = go.Scatter(x=data.tw_b2.s, y=y_b2, mode='lines', line=dict(color='red'), text = data.tw_b2.name, name='Beam 2')
-    
-    return np.full(2, True), [b1, b2]
-
-def plot_nominal_beam_positions(data, plane):
-
-    if plane == 'h': y_b1, y_b2 = data.nom_b1.x, data.nom_b2.x
-    elif plane == 'v': y_b1, y_b2 = data.nom_b1.y, data.nom_b2.y
-
-    b1 = go.Scatter(x=data.nom_b1.s, y=y_b1, mode='lines', line=dict(color='blue', dash='dash'), text = data.nom_b1.name, name='Nominal beam 1')
-    b2 = go.Scatter(x=data.nom_b2.s, y=y_b2, mode='lines', line=dict(color='red', dash='dash'), text = data.nom_b2.name, name='Nominal beam 2')
-    
-    return np.full(2, True), [b1, b2]
-
-def plot_aperture(data, plane):
-
-    if plane == 'h':
-            
-        # Aperture
-        top_aper_b1 = go.Scatter(x=data.aper_b1.S, y=data.aper_b1.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')
-        bottom_aper_b1 = go.Scatter(x=data.aper_b1.S, y=-data.aper_b1.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')     
-        top_aper_b2 = go.Scatter(x=data.aper_b2.S, y=data.aper_b2.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False)
-        bottom_aper_b2 = go.Scatter(x=data.aper_b2.S, y=-data.aper_b2.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False) 
-
-    elif plane == 'v':
-            
-        # Aperture
-        top_aper_b1 = go.Scatter(x=data.aper_b1.S, y=data.aper_b1.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')
-        bottom_aper_b1 = go.Scatter(x=data.aper_b1.S, y=-data.aper_b1.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')
-        top_aper_b2 = go.Scatter(x=data.aper_b2.S, y=data.aper_b2.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False)
-        bottom_aper_b2 = go.Scatter(x=data.aper_b2.S, y=-data.aper_b2.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False) 
-
-    traces = [top_aper_b1, bottom_aper_b1, top_aper_b2, bottom_aper_b2]
-    visibility = np.array([True, True, False, False])
-
-    return visibility, traces
-
-def add_velo(data):
-
-    # Find ip8 position
-    ip8 = data.tw_b1.loc[data.tw_b1['name'] == 'ip8', 's'].values[0]
-
-    # VELO position
-    x0=ip8-0.2
-    x1=ip8+0.8
-    y0=-0.05
-    y1=0.05
-
-    trace = go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], fill="toself", mode='lines', line=dict(color='orange'), name='VELO')
-
-    return trace
