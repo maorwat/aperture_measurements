@@ -7,14 +7,14 @@ import sys
 home_path = str(Path.cwd().parent)
 sys.path.append(home_path)
 
-from aper_package.aperture_data import Data
+from aper_package.aperture_data import ApertureData
 
 class TestAperData(unittest.TestCase):
 
     def setUp(self):
 
         line = home_path+'/test_data/Martas_injection_b1.json'
-        self.data = Data(line)
+        self.data = ApertureData(line)
 
     def test_init(self):
 
@@ -113,6 +113,10 @@ class TestAperData(unittest.TestCase):
         path = home_path+'/test_data/thick_all_optics_B1.tfs'
         self.data.load_elements(path = path)
         self.data.elements.shape==(6724, 5)
+
+    def test_reset_knobs(self):
+
+        pass
 
 if __name__ == '__main__':
     unittest.main()

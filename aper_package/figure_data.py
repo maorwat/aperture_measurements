@@ -2,11 +2,26 @@ import numpy as np
 import pandas as pd
 
 import plotly.graph_objects as go
+from typing import List, Tuple
 
-def plot_BPM_data(data, plane, twiss):
-    
+def plot_BPM_data(data: object, 
+                  plane: str, 
+                  twiss: object) -> Tuple[np.ndarray, List[go.Scatter]]:
+    """
+    Assign all BPMs to positions s based on twiss data and generate Plotly traces.
+
+    Parameters:
+        data: An object BPMData, expected to have attribute data.
+        plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
+        twiss: An ApertureData object containing aperture data used for processing BPM positions.
+
+    Returns:
+        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing an array of booleans and a list of Plotly scatter traces.
+    """
+    # Assign BPMs to some position along the ring s by merging with twiss
     data.process(twiss)
 
+    # Select data based on plane
     if plane == 'h': y_b1, y_b2 = data.b1.x, data.b2.x
     elif plane == 'v': y_b1, y_b2 = data.b1.y, data.b2.y
 
@@ -19,8 +34,17 @@ def plot_BPM_data(data, plane, twiss):
     
     return np.full(2, True), [b1, b2]
 
-def plot_machine_components(data):
+def plot_machine_components(data: object) -> Tuple[np.ndarray, List[go.Scatter]]:
+    """
+    Generates Plotly traces for various machine components based on their type and position.
 
+    Parameters:
+        data: An ApertureData object containing machine element data, expected to have a DataFrame 'elements'
+              with columns 'KEYWORD', 'S', 'L', 'K1L', and 'NAME'.
+
+    Returns:
+        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing an array of visibility flags and a list of Plotly scatter traces.
+    """
     # Specify the elements to plot and corresponding colors
     objects = ["SBEND", "COLLIMATOR", "SEXTUPOLE", "RBEND", "QUADRUPOLE"]
     colors = ['lightblue', 'black', 'hotpink', 'green', 'red']
@@ -28,46 +52,95 @@ def plot_machine_components(data):
     # Array to store visibility of the elements
     visibility_arr = np.array([], dtype=bool)
 
-    elements = []
+    # Dictionary to store combined data for each object type
+    combined_traces = {obj: {'x': [], 'y': [], 'name': obj, 'color': colors[n]} for n, obj in enumerate(objects)}
 
     # Iterate over all object types
     for n, obj in enumerate(objects):
-            
         obj_df = data.elements[data.elements['KEYWORD'] == obj]
-            
-        # Add elements to the plot
-        for i in range(obj_df.shape[0]):
-
-            x0, x1 = obj_df.iloc[i]['S']-obj_df.iloc[i]['L']/2, obj_df.iloc[i]['S']+obj_df.iloc[i]['L']/2                
-            if obj=='QUADRUPOLE': y0, y1 = 0, np.sign(obj_df.iloc[i]['K1L']).astype(int)                    
-            else: y0, y1 = -0.5, 0.5
-
-            element = go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], fill="toself", mode='lines',
-                             fillcolor=colors[n], line=dict(color=colors[n]), name=obj_df.iloc[i]['NAME'])
-
-            elements.append(element)
-
-        # Append to always show the elements
-        visibility_arr = np.append(visibility_arr, np.full(obj_df.shape[0], True))
         
-    return visibility_arr, elements
+        # Collect x and y coordinates for the current object type
+        x_coords = []
+        y_coords = []
 
-def plot_collimators_from_yaml(data, plane):
-    
-    visibility_arr_b1, collimators = plot_collimators(data, plane)
-    
-    return visibility_arr_b1, collimators
+        for i in range(obj_df.shape[0]):
+            x0, x1 = obj_df.iloc[i]['S']-obj_df.iloc[i]['L']/2, obj_df.iloc[i]['S']+obj_df.iloc[i]['L']/2
+            if obj == 'QUADRUPOLE':
+                y0, y1 = 0, np.sign(obj_df.iloc[i]['K1L']).astype(int)
+            else:
+                y0, y1 = -0.5, 0.5
 
-def plot_collimators_from_timber(collimator_data, data, plane):
+            # Append coordinates to the respective object type
+            x_coords.extend([x0, x0, x1, x1, None])  # None to separate shapes
+            y_coords.extend([y0, y1, y1, y0, None])
+
+        # Add combined coordinates to the dictionary
+        combined_traces[obj]['x'].append(x_coords)
+        combined_traces[obj]['y'].append(y_coords)
+
+    # Convert combined traces to Plotly Scatter objects
+    traces = []
+    for obj in objects:
+        trace_data = combined_traces[obj]
+        trace = go.Scatter(
+            x=np.concatenate(trace_data['x']),
+            y=np.concatenate(trace_data['y']),
+            fill='toself',
+            mode='lines',
+            fillcolor=trace_data['color'],
+            line=dict(color=trace_data['color']),
+            name=obj
+        )
+        traces.append(trace)
+
+    # Append to always show the elements
+    visibility_arr = np.append(visibility_arr, np.full(len(objects), True))
+
+    return visibility_arr, traces
+
+def plot_collimators_from_yaml(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
+    """
+    Plot collimators based on YAML data.
+
+    Parameters:
+        data: An ApertureData object containing collimator data.
+        plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
+
+    Returns:
+        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and the list of Plotly scatter traces.
+    """
     
+    return plot_collimators(data, plane)
+
+def plot_collimators_from_timber(collimator_data: object, data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
+    
+    """
+    Plot collimators after processing data from TIMBER.
+
+    Parameters:
+        collimator_data: A CollimatorData object containing raw collimator data.
+        data: An ApertureData object containing additional data needed for processing.
+        plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
+
+    Returns:
+        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and the list of Plotly scatter traces.
+    """
     collimator_data.process(data)
     
-    visibility_arr_b1, processed_collimator_data = plot_collimators(collimator_data, plane)
-    
-    return visibility_arr_b1, processed_collimator_data
+    return plot_collimators(collimator_data, plane)
 
-def plot_collimators(data, plane):
+def plot_collimators(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
+    """
+    Plot collimators for a given plane.
 
+    Parameters:
+        data: An object containing collimator data with attributes `colx_b1`, `colx_b2`, `coly_b1`, `coly_b2`.
+        plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
+
+    Returns:
+        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and the list of Plotly scatter traces.
+    """
+    # Select the appropriate DataFrames based on the plane
     if plane == 'h': df_b1, df_b2 = data.colx_b1, data.colx_b2
     elif plane == 'v': df_b1, df_b2 = data.coly_b1, data.coly_b2
 
@@ -88,12 +161,22 @@ def plot_collimators(data, plane):
             collimators.append(top_col)
             collimators.append(bottom_col)
         
-    # As default show only beam 1 collimators
+    # Create visibility array: show only Beam 1 collimators by default
     visibility_arr_b1 = np.concatenate((np.full(df_b1.shape[0]*2, True), np.full(df_b2.shape[0]*2, False)))
 
     return visibility_arr_b1, collimators
 
-def plot_envelopes(data, plane):
+def plot_envelopes(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
+    """
+    Plot the beam envelopes for a given plane.
+
+    Parameters:
+        data: An ApertureData object containing beam envelope data for beam 1 and beam 2.
+        plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
+
+    Returns:
+        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and a list of Plotly scatter traces.
+    """
 
     # Define hover template with customdata
     hover_template = ("s: %{x} [m]<br>"
@@ -144,7 +227,17 @@ def plot_envelopes(data, plane):
 
     return visibility, traces
 
-def plot_beam_positions(data, plane):
+def plot_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
+    """
+    Plot the beam positions for a given plane.
+
+    Parameters:
+        data: An ApertureData object containing beam position data for beam 1 and beam 2.
+        plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
+
+    Returns:
+        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and a list of Plotly scatter traces.
+    """
 
     if plane == 'h': y_b1, y_b2 = data.tw_b1.x, data.tw_b2.x
     elif plane == 'v': y_b1, y_b2 = data.tw_b1.y, data.tw_b2.y
@@ -154,7 +247,17 @@ def plot_beam_positions(data, plane):
     
     return np.full(2, True), [b1, b2]
 
-def plot_nominal_beam_positions(data, plane):
+def plot_nominal_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
+    """
+    Plot the nominal beam positions for a given plane.
+
+    Parameters:
+        data: An ApertureData object containing nominal beam position data for beam 1 and beam 2.
+        plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
+
+    Returns:
+        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and a list of Plotly scatter traces.
+    """
 
     if plane == 'h': y_b1, y_b2 = data.nom_b1.x, data.nom_b2.x
     elif plane == 'v': y_b1, y_b2 = data.nom_b1.y, data.nom_b2.y
@@ -164,7 +267,17 @@ def plot_nominal_beam_positions(data, plane):
     
     return np.full(2, True), [b1, b2]
 
-def plot_aperture(data, plane):
+def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
+    """
+    Plot the aperture for a given plane.
+
+    Parameters:
+        data: An ApertureData object containing aperture data for beam 1 and beam 2.
+        plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
+
+    Returns:
+        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and a list of Plotly scatter traces.
+    """
 
     if plane == 'h':
             
@@ -187,7 +300,16 @@ def plot_aperture(data, plane):
 
     return visibility, traces
 
-def add_velo(data):
+def add_velo(data: object) -> go.Scatter:
+    """
+    Add a VELO trace at the IP8 position.
+
+    Parameters:
+        data: An ApertureData object containing twiss data for beam 1.
+
+    Returns:
+        go.Scatter: A Plotly scatter trace representing the VELO.
+    """
 
     # Find ip8 position
     ip8 = data.tw_b1.loc[data.tw_b1['name'] == 'ip8', 's'].values[0]
@@ -198,6 +320,6 @@ def add_velo(data):
     y0=-0.05
     y1=0.05
 
-    trace = go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], fill="toself", mode='lines', line=dict(color='orange'), name='VELO')
+    trace = go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], mode='lines', line=dict(color='orange'), name='VELO')
 
     return trace

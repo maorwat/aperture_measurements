@@ -3,54 +3,76 @@ import numpy as np
 import yaml
 import tfs
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union, List
 
 import pytimber
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from aper_package.utils import shift_by
 
 class BPMData:
 
-    def __init__(self, 
-                 spark):
+    def __init__(self, spark):
+        """
+        Initializes the BPMData class.
+
+        Parameters:
+            spark: Spark session for accessing the LoggingDB.
+        """
 
         # initialise the logging
         self.ldb = pytimber.LoggingDB(spark_session=spark)
 
-    def load_data(self, t):
-        
-        # If time was selected using utils.select_time()
-        if isinstance(t, list): t = t[0]
+    def load_data(self, t: datetime) -> None:
+        """
+        Loads BPM data from Timber.
 
+        Parameters:
+            t: A datetime object or a list containing a datetime object representing the time to fetch data.
+        """
+        
         print("Loading BPM data...")
 
-        # Fetch BPM positions and names
+        # Define the end time for data fetching
         end_time = t + timedelta(seconds=1)
-        BPM_data = {
-            'BPM_pos_H': self.ldb.get('BFC.LHC:OrbitAcq:positionsH', t, end_time),
-            'BPM_pos_V': self.ldb.get('BFC.LHC:OrbitAcq:positionsV', t, end_time),
-            'BPM_names': self.ldb.get('BFC.LHC:Mappings:fBPMNames_h', t, t + timedelta(minutes=1))
-        }
+        
+        # Fetch BPM data
+        try:
+            bpm_positions_h = self.ldb.get('BFC.LHC:OrbitAcq:positionsH', t, end_time)
+            bpm_positions_v = self.ldb.get('BFC.LHC:OrbitAcq:positionsV', t, end_time)
+            bpm_names_data = self.ldb.get('BFC.LHC:Mappings:fBPMNames_h', t, t + timedelta(minutes=1))
+        except Exception as e:
+            print(f"Error loading BPM data: {e}")
+            return
 
-        # Extract BPM names and readings
-        BPM_readings_H = BPM_data['BPM_pos_H']['BFC.LHC:OrbitAcq:positionsH'][1]
-        BPM_readings_V = BPM_data['BPM_pos_V']['BFC.LHC:OrbitAcq:positionsV'][1]
-        # Make sure the names are lowercase to merge later with twiss data
-        BPM_names = np.char.lower(BPM_data['BPM_names']['BFC.LHC:Mappings:fBPMNames_h'][1][0].astype(str))
+        # Extract BPM readings
+        bpm_readings_h = bpm_positions_h['BFC.LHC:OrbitAcq:positionsH'][1][0]  
+        bpm_readings_v = bpm_positions_v['BFC.LHC:OrbitAcq:positionsV'][1][0] 
 
-        # Create DataFrame with readings
+        # Ensure BPM names are in lowercase for merging with Twiss data later
+        bpm_names = np.char.lower(bpm_names_data['BFC.LHC:Mappings:fBPMNames_h'][1][0].astype(str))
+
+        # Create a DataFrame with the extracted data
         self.data = pd.DataFrame({
-            'x': BPM_readings_H[0],  # Access first (and only) reading by index 0
-            'y': BPM_readings_V[0],  # Access first reading by index 0
-            'name': BPM_names
+            'name': bpm_names,
+            'x': bpm_readings_h,
+            'y': bpm_readings_v
         })
 
         print("Done loading BPM data.")
 
-    def process(self, twiss):
+    def process(self, twiss: object) -> None:
+        """
+        Processes the loaded BPM data by merging it with the Twiss data to find BPM positions.
 
-        # Find BPM positions using twiss data
+        Parameters:
+            twiss: An ApertureData object containing Twiss data for beam 1 and beam 2.
+        """
+        if self.data is None:
+            print("No BPM data to process. Please load data first.")
+            return
+        
+        # Merge BPM data with Twiss data to find positions
         self.b1 = pd.merge(self.data, twiss.tw_b1[['name', 's']], on='name')
         self.b2 = pd.merge(self.data, twiss.tw_b2[['name', 's']], on='name')
 
@@ -58,19 +80,25 @@ class CollimatorsData:
 
     def __init__(self, 
                  spark,
-                 yaml_path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
+                 yaml_path: Union[str, List[str]] = '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
+        """
+        Initializes the CollimatorsData class.
 
+        Parameters:
+            spark: Spark session for accessing the LoggingDB.
+            yaml_path: Path to the YAML file containing collimator configurations.
+        """
         # initialise the logging
         self.ldb = pytimber.LoggingDB(spark_session=spark)
-        self.yaml_path = yaml_path
+        self.yaml_path = yaml_path if isinstance(yaml_path, str) else yaml_path[0]
 
-    def load_data(self, t):
-        
-        # If time was selected using utils.select_time()
-        if isinstance(t, list): t = t[0]
-        # or file selected using select_file_in_SWAN()
-        if isinstance(self.yaml_path, list): self.yaml_path = self.yaml_path[0]
+    def load_data(self, t: datetime) -> None:
+        """
+        Loads collimator data from the specified YAML file and Timber.
 
+        Parameters:
+            t: Datetime object representing the time to fetch data.
+        """
         # Load the file  
         with open(self.yaml_path, 'r') as file:
             f = yaml.safe_load(file)
@@ -118,14 +146,34 @@ class CollimatorsData:
 
         print("Done loading collimators data.")
         
-    def process(self, twiss):
+    def process(self, twiss: object) -> None:
+        """
+        Processes the loaded collimator data with the provided Twiss data.
+
+        Parameters:
+            twiss: An ApertureData object containing Twiss data for beam 1 and beam 2.
+        """
         
         self.colx_b1 = self._add_collimator_positions(twiss.tw_b1, self.colx_b1, 'x')
         self.colx_b2 = self._add_collimator_positions(twiss.tw_b2, self.colx_b2, 'x')
         self.coly_b1 = self._add_collimator_positions(twiss.tw_b1, self.coly_b1, 'y')
         self.coly_b2 = self._add_collimator_positions(twiss.tw_b2, self.coly_b2, 'y')
                
-    def _add_collimator_positions(self, twiss, col, x_key):
+    def _add_collimator_positions(self, 
+                                  twiss: pd.DataFrame, 
+                                  col: pd.DataFrame, 
+                                  position_key: str) -> pd.DataFrame:
+        """
+        Merges collimator data with Twiss data to add positions.
+
+        Parameters:
+            twiss: DataFrame containing Twiss data.
+            col: DataFrame containing collimator data.
+            position_key: The key indicating the position ('x' or 'y').
+
+        Returns:
+            pd.DataFrame: The merged DataFrame with updated positions.
+        """
 
         # Ensure 'col' is a copy to avoid SettingWithCopyWarning
         col = col.copy()
@@ -137,7 +185,7 @@ class CollimatorsData:
         col = pd.merge(col[['name', 'gap', 'angle']], twiss[['name', 's', 'x', 'y']], on='name', how='left')
 
         # Calculate gap in meters and add to the dataFrame
-        col.loc[:, 'top_gap_col'] = col['gap'] + col[x_key]
-        col.loc[:, 'bottom_gap_col'] = -col['gap'] + col[x_key]
+        col.loc[:, 'top_gap_col'] = col['gap'] + col[position_key]
+        col.loc[:, 'bottom_gap_col'] = -col['gap'] + col[position_key]
         
         return col

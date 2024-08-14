@@ -49,3 +49,19 @@ def match_with_twiss(twiss, aper_to_match):
     df_merged = df_merged.reset_index(drop=True)
 
     return df_merged
+
+def select_file_in_SWAN(initial_path='/eos/project-c/collimation-team/machine_configurations'):
+    
+    file = [None]
+    
+    file_chooser = FileChooser(initial_path)
+    display(file_chooser)
+    
+    def on_selection_change(change):
+        if file_chooser.selected:
+            print(f"Selected file: {file_chooser.selected}")
+            file[0] = file_chooser.selected
+
+    file_chooser.register_callback(on_selection_change)
+    
+    return file

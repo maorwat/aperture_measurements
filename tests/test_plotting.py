@@ -8,7 +8,7 @@ import sys
 home_path = str(Path.cwd().parent)
 sys.path.append(home_path)
 
-from aper_package.aperture_data import Data
+from aper_package.aperture_data import ApertureData
 from aper_package.plotting import *
 
 class TestPlotting(unittest.TestCase):
@@ -16,7 +16,7 @@ class TestPlotting(unittest.TestCase):
     def setUp(self):
 
         line = home_path+'/test_data/Martas_injection_b1.json'
-        self.data = Data(line)
+        self.data = ApertureData(line)
         path = home_path+'/test_data/all_optics_B1.tfs'
         self.data.load_aperture(path)
 

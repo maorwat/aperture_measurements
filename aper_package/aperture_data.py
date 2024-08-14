@@ -4,7 +4,7 @@ import tfs
 import yaml
 
 from typing import Any, Dict, Optional
-
+ 
 import xtrack as xt
 
 from aper_package.utils import shift_by
@@ -13,7 +13,7 @@ from aper_package.utils import match_with_twiss
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-class Data:
+class ApertureData:
     
     def __init__(self,
                  path_b1: str,
@@ -25,7 +25,7 @@ class Data:
         Initialize the AperData class with necessary configurations.
 
         Parameters:
-            ip (str): Interaction point.
+            ip: Interaction point.
             n: An optional parameter, default is 0.
             emitt: Normalised emittance value, default is 3.5e-6.
             line1: Path to the line JSON file for beam 1, default is None, can be selected interactively.
@@ -53,40 +53,59 @@ class Data:
         self._distance_to_nominal('h')
         self._distance_to_nominal('v')
 
-    def _define_knobs(self):
+    def _define_knobs(self) -> None:
+        """
+        Identifies and stores the knobs (parameters with 'on_' in their name) from the line_b1 variable vault.
+        Stores the initial and current values of these knobs in a DataFrame.
+        """
 
         # Find knobs
         knobs = self.line_b1.vv.vars.keys()
         knobs = [value for value in knobs if 'on_' in value]
 
-        values = []
-        for i in knobs:
-            values.append(self.line_b1.vv.get(i))
+        # Identify knobs that contain 'on_' in their names
+        knobs = [k for k in self.line_b1.vv.vars.keys() if 'on_' in k]
 
-        df = pd.DataFrame({'knob': knobs, 
-                  'initial value': values,
-                  'current value': values})
-        
-        df = df[~df.apply(lambda row: any(cell == {} for cell in row), axis=1)]
+        # Extract the initial values of the knobs
+        knob_values = [self.line_b1.vv.get(knob) for knob in knobs]
 
-        self.knobs = df.sort_values(by='knob', ascending=True).reset_index(drop=True)
+        # Create a DataFrame with knobs and their values
+        knobs_df = pd.DataFrame({
+            'knob': knobs,
+            'initial value': knob_values,
+            'current value': knob_values
+        })
 
-    def reset_knobs(self):
+        # Filter out any rows where any cell is an empty dictionary
+        self.knobs = knobs_df[~knobs_df.applymap(lambda x: x == {}).any(axis=1)].sort_values(by='knob').reset_index(drop=True)
 
-        for index, row in self.knobs.iterrows():
-            if row['current value'] != row['initial value']:
-                self.change_knob(row['knob'], row['initial value'])
-        
+    def reset_knobs(self) -> None:
+        """
+        Resets the knobs to their initial values if they have been changed.
+        Then recalculates the twiss parameters.
+        """     
+
+        # Iterate over the knobs DataFrame and reset values where necessary
+        changed_knobs = self.knobs[self.knobs['current value'] != self.knobs['initial value']]
+
+        for _, row in changed_knobs.iterrows():
+            self.change_knob(row['knob'], row['initial value'])
+            # Update the 'current value' to reflect the reset
+            self.knobs.at[row.name, 'current value'] = row['initial value']
+
+        # Recalculate the twiss parameters    
         self.twiss()
 
     def _load_lines_data(self, path_b1: str, path_b2: str) -> None:
         """Load lines data from a JSON file.
         
         Parameters:
-            path1: Path to the line JSON file for beam 1.
-            title: Prompt dispolayed upon file selection.
+            path_b1: Path to the line JSON file for beam 1.
+            path_b2: Path to the line JSON file for beam 2, if not given,
+                    the path will be created by replacing b1 with b2
         """
         if not path_b2:
+            # TODO: handle if a list eg through SWAN
             path_b2 = str(path_b1).replace('b1', 'b2')
 
         try:
@@ -102,8 +121,9 @@ class Data:
         """Load and process aperture data from a file.
         
         Parameters:
-            path1: Path to aperture all_optics_B1.tfs file.
-            title: Prompt dispolayed upon file selection.
+            path_b1: Path to aperture all_optics_B1.tfs file.
+            path_b2: Path to aperture all_optics_B4.tfs file, if not given,
+                    the path will be created by replacing B1 with B4.
 
         Returns:
             Processeed aperture DataFrames for beams 1 and 2, respectively.
@@ -144,7 +164,7 @@ class Data:
         # Check if the data had been cycled
         if hasattr(self, 'first_element'):
             # Find how much to shift the data
-            shift = self._get_shift()
+            shift = self._get_shift(self.first_element)
             self.tw_b1 = shift_by(self.tw_b1, shift, 's')
             self.tw_b2 = shift_by(self.tw_b2, shift, 's')
 
@@ -162,7 +182,7 @@ class Data:
         Process the twiss DataFrame to remove unnecessary elements and columns.
 
         Parameters:
-            twiss_df: DataFrame containing the twiss parametself.knobs['knob'] == knobers.
+            twiss_df: DataFrame containing the twiss parameters.
 
         Returns:
             Processed DataFrame with selected columns and without 'aper' and 'drift' elements.
@@ -173,25 +193,27 @@ class Data:
         # Select necessary columns
         return twiss_df[['s', 'name', 'x', 'y', 'betx', 'bety']]
     
-    def _get_shift(self) -> float:
+    def _get_shift(self, first_element: str) -> float:
         """
         Calculates the shift required to set the specified element as the new zero point.
 
         Returns:
             float: The amount to shift the data.
-
-        Raises:
-            ValueError: If the first element is not found in the DataFrame.
         """
         # Find the element to be set as the new zero
-        try:
-            element_positions = self.tw_b1.loc[self.tw_b1['name'] == self.first_element]['s'].values
-        except ValueError:
-            raise ValueError(f"Element '{self.first_element}' not found in the DataFrame. Aperture and drift elements are removed.")
+        element_positions = self.tw_b1.loc[self.tw_b1['name'] == first_element]['s'].values
 
-        # To set to zero, shift to the left
-        shift = -element_positions[0]
-
+        # If element not found
+        if len(element_positions) == 0:
+            # Don't cycle
+            shift = 0
+            print(f"Element '{first_element}' not found in the DataFrame.")
+        else:
+            # Save the first element for the case of retwissing
+            self.first_element = first_element
+            # To set to zero, shift to the left
+            shift = -element_positions[0]
+        
         return shift
 
     def cycle(self, element: str) -> None:
@@ -203,11 +225,9 @@ class Data:
         """
         # Covert to lowercase if not already
         element = element.lower()
-
-        # Save the first element for the case of retwissing
-        self.first_element = element
+        
         # Find how much to shift the data
-        shift = self._get_shift()
+        shift = self._get_shift(element)
 
         # List of attributes to shift, categorized by their shift type
         attributes_to_shift = {
@@ -379,7 +399,15 @@ class Data:
         self.elements = match_with_twiss(self.tw_b1, df)
     
     def change_knob(self, knob: str, value: float) -> None:
-        
+        """
+        Update the specified knob to the given value for both beam lines (b1 and b2).
+        Also update the corresponding entry in the knobs DataFrame.
+
+        Parameters:
+            knob: The name of the knob to be changed.
+            value: The new value to set for the knob.
+        """
+
         self.line_b1.vars[knob] = value
         self.line_b2.vars[knob] = value
 

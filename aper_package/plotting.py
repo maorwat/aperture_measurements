@@ -1,16 +1,36 @@
 import numpy as np
 import pandas as pd
 from datetime import datetime
+from typing import Optional, List, Tuple
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText, DatePicker, Text, FileUpload
+from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText, DatePicker, Text, Dropdown
 from IPython.display import display
 
 from aper_package.figure_data import *
 
-def plot(data, plane, BPM_data = None, collimator_data = None, width=1600, height=600, additional_traces=None):
+def plot(data: object, 
+         plane: str, 
+         BPM_data: Optional[object] = None, 
+         collimator_data: Optional[object] = None, 
+         width: Optional[int] = 1600, 
+         height: Optional[int] = 600, 
+         additional_traces: Optional[list] = None) -> None:
+    """
+    Create and display an interactive plot with widgets for controlling and visualizing data.
+    
+    Parameters:
+        data: The primary object ApertureData for plotting.
+        plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
+        BPM_data: Optional object BPMData.
+        collimator_data: Optional object CollimatorsData.
+        width: Width of the plot. Default is 1600.
+        height: Height of the plot. Default is 600.
+        additional_traces: List of additional traces to add to the plot.
+    """
 
+    # Set global variables
     global knob_dropdown, add_button, remove_button, apply_button, graph_container, knob_box
     global cycle_button, cycle_input, date_picker, time_input, load_BPMs_button, load_cols_button, envelope_button, envelope_input
     global values, selected_knobs, knob_widgets
@@ -28,12 +48,12 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1600, heigh
     global_height = height
     global_additional_traces = additional_traces
 
-    # Dictionaries and list to store selected knobs and corresponding widgets and current widget values
+    # Dictionaries and list to store selected knobs, corresponding widgets, and current widget values
     selected_knobs = []
     knob_widgets = {}
     values = {}
 
-    # Define widgets
+    # Define and configure widgets
     add_button, remove_button, apply_button, cycle_button, reset_button, envelope_button = define_buttons()
     knob_dropdown, knob_box, cycle_input, envelope_input, graph_container = define_widgets()
 
@@ -65,7 +85,8 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1600, heigh
             timber_controls.append(load_cols_button)
 
         # Time selection widgets
-        date_picker, time_input, time_controls = define_time_widgets()
+        date_picker, time_input = define_time_widgets()
+        time_controls = [date_picker, time_input]
 
         # Define layout depending if timber buttons present or not
         first_row_controls = cycle_controls+knob_selection_controls
@@ -83,67 +104,96 @@ def plot(data, plane, BPM_data = None, collimator_data = None, width=1600, heigh
     # Plot all traces
     update_graph()
 
-def define_widget_layout(first_row_controls, second_row_controls):
+def define_widget_layout(first_row_controls: List[widgets.Widget], second_row_controls: List[widgets.Widget]) -> VBox:
+    """
+    Define and arrange the layout of the widgets.
 
-        # Arrange knob dropdown and buttons in a horizontal layout
-    controls = HBox(
+    Parameters:
+        first_row_controls: List of widgets to be arranged in the first row.
+        second_row_controls: List of widgets to be arranged in the second row.
+
+    Returns:
+        VBox: A VBox containing all widget layouts.
+    """
+
+    # Create layout for the first row of controls
+    first_row_layout = HBox(
         first_row_controls,
         layout=Layout(
-            justify_content='space-around',  # Distribute space evenly
-            align_items='center',            # Center align all items
-            width='100%',
-            padding='10px',                  # Add padding around controls
-            border='solid 2px #ccc'))
+            justify_content='space-around', # Distribute space evenly
+            align_items='center',           # Center align all items
+            width='100%',                   # Full width of the container
+            padding='10px',                 # Add padding around controls
+            border='solid 2px #ccc'))       # Border around the HBox
 
-    # Arrange knob dropdown and buttons in a horizontal layout
-    more_controls = HBox(
+    # Create layout for the second row of controls
+    second_row_layout = HBox(
         second_row_controls,
         layout=Layout(
-            justify_content='space-around',  # Distribute space evenly
-            align_items='center',            # Center align all items
-            width='100%',
-            padding='10px',                  # Add padding around controls
-            border='solid 2px #ccc'))
+            justify_content='space-around', # Distribute space evenly
+            align_items='center',           # Center align all items
+            width='100%',                   # Full width of the container
+            padding='10px',                 # Add padding around controls
+            border='solid 2px #ccc'))       # Border around the HBox
 
-    # Combine everything into the main VBox layout
-    everything = VBox(
-        [controls, knob_box, more_controls, graph_container],
+    # Combine both rows, knob box, and graph container into a VBox layout
+    full_layout = VBox(
+        [first_row_layout, knob_box, second_row_layout, graph_container],
         layout=Layout(
-            justify_content='center',
-            align_items='center',
-            width='80%',                     # Limit width to 80% of the page
-            margin='0 auto',                 # Center the VBox horizontally
-            padding='20px',                  # Add p0dding around the whole container
-            border='solid 2px #ddd'))
+            justify_content='center',       # Center align the VBox content horizontally
+            align_items='center',           # Center align all items vertically
+            width='80%',                    # Limit width to 80% of the page
+            margin='0 auto',                # Center the VBox horizontally
+            padding='20px',                 # Add p0dding around the whole container
+            border='solid 2px #ddd'))       # Border around the VBox
 
-    return everything
+    return full_layout
 
-def define_time_widgets():
+def define_time_widgets() -> Tuple[DatePicker, Text]:
+    """
+    Create and configure date and time input widgets.
+
+    Returns:
+        Tuple[DatePicker, Text, List[DatePicker, Text]]: A tuple containing:
+            - DatePicker widget for selecting the date.
+            - Text widget for entering the time.
+            - A list containing both widgets.
+    """
 
     # Create date and time input widgets
     date_picker = DatePicker(
             description='Select Date:',
-            style={'description_width': 'initial'},
-            layout=Layout(width='300px'))
+            style={'description_width': 'initial'}, # Ensures the description width fits the content
+            layout=Layout(width='300px'))           # Sets the width of the widget
     
     time_input = Text(
             description='Enter Time (HH:MM:SS):',
-            placeholder='10:53:15',
-            style={'description_width': 'initial'},
-            layout=Layout(width='300px'))
-    
-    time_controls = [date_picker, time_input]
+            placeholder='10:53:15',                 # Provides a placeholder text for the expected format
+            style={'description_width': 'initial'}, # Ensures the description width fits the content
+            layout=Layout(width='300px'))           # Sets the width of the widget
 
-    return date_picker, time_input, time_controls
+    return date_picker, time_input
 
-def define_buttons():
+def define_buttons()-> Tuple[Button, Button, Button, Button, Button, Button]:
+    """
+    Create and configure various control buttons for the interface.
+
+    Returns:
+        Tuple[Button, Button, Button, Button, Button, Button]: A tuple containing:
+            - Add button
+            - Remove button
+            - Apply button
+            - Cycle button
+            - Reset knobs button
+            - Envelope button
+    """
 
     # Button to add selection
-    add_button = Button(description="Add", style=widgets.ButtonStyle(button_color='rgb(166, 216, 84)'))
+    add_button = Button(description="Add", style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'))
     # Button to remove selection
-    remove_button = Button(description="Remove", style=widgets.ButtonStyle(button_color='rgb(237, 100, 90)'))
+    remove_button = Button(description="Remove", style=widgets.ButtonStyle(button_color='rgb(249, 123, 114)'))
     # Button to apply selection and update graph
-    apply_button = Button(description="Apply", style=widgets.ButtonStyle(button_color='lightblue'))
+    apply_button = Button(description="Apply", style=widgets.ButtonStyle(button_color='pink'))
     # Button to shift the graph
     cycle_button = Button(description="Cycle", style=widgets.ButtonStyle(button_color='pink'))
     # Button to reset knobs    
@@ -153,10 +203,20 @@ def define_buttons():
 
     return add_button, remove_button, apply_button, cycle_button, reset_button, envelope_button
 
-def define_widgets():
+def define_widgets() -> Tuple[Dropdown, VBox, Text, FloatText, VBox]:
+    """
+    Define and configure widgets for knob selection, cycle start, envelope size, and graph container.
 
+    Returns:
+        Tuple[Dropdown, VBox, Text, FloatText, VBox]: A tuple containing:
+            - Dropdown for knob selection
+            - VBox container for selected knobs
+            - Text widget for cycle start input
+            - FloatText widget for envelope size input
+            - VBox container for the graph
+    """
     # Create a dropdown to select a knob
-    knob_dropdown = widgets.Dropdown(
+    knob_dropdown = Dropdown(
         options=global_data.knobs['knob'].to_list(),
         description='Select knob:',
         disabled=False)
@@ -170,19 +230,19 @@ def define_widgets():
         border='solid 2px #eee'))
 
     # Create a text widget to specify cycle start
-    cycle_input = widgets.Text(
-        value='',                  # Initial value (empty string)
-        description='First element:',      # Label for the widget
-        placeholder='e. g. ip3',  # Placeholder text when the input is empty
-        style={'description_width': 'initial'},  # Adjust the width of the description label
-        layout=widgets.Layout(width='300px'))  # Set the width of the widget
+    cycle_input = Text(
+        value='',                               # Initial value (empty string)
+        description='First element:',           # Label for the widget
+        placeholder='e. g. ip3',                # Placeholder text when the input is empty
+        style={'description_width': 'initial'}, # Adjust the width of the description label
+        layout=Layout(width='300px'))           # Set the width of the widget
 
     # Create a float widget to specify envelope size
-    envelope_input = widgets.FloatText(
-            value=global_data.n,                  # Initial value (empty string)
-            description='Size of envelope [σ]:',      # Label for the widget 
-            style={'description_width': 'initial'},  # Adjust the width of the description label
-            layout=widgets.Layout(width='300px'))  # Set the width of the widget
+    envelope_input = FloatText(
+            value=global_data.n,                    # Initial value (empty string)
+            description='Size of envelope [σ]:',    # Label for the widget 
+            style={'description_width': 'initial'}, # Adjust the width of the description label
+            layout=Layout(width='300px'))           # Set the width of the widget
         
     # Create an empty VBox container for the graph
     graph_container = VBox(layout=Layout(
@@ -195,16 +255,22 @@ def define_widgets():
     return knob_dropdown, knob_box, cycle_input, envelope_input, graph_container
 
 def on_envelope_button_clicked(b):
-
+    """
+    Handle the event when the envelope button is clicked. Update the global envelope size and refresh the graph.
+    """
+    # Get the selected envelope size from the widget
     selected_size = envelope_input.value
-
+    print('Setting new envelope size...')
+    # Update global data with the new envelope size
     global_data.envelope(selected_size)
-
-    # Update the figure
+    # Update the graph with the new envelope size
     update_graph()
 
 def on_load_BPMs_button_clicked(b):
-
+    """
+    Handle the event when the Load BPMs button is clicked. Parse the date and time inputs, and load BPM data.
+    """
+    # Retrieve the selected date and time from the widgets
     selected_date = date_picker.value
     selected_time_str = time_input.value
 
@@ -216,21 +282,24 @@ def on_load_BPMs_button_clicked(b):
             # Create a datetime object
             combined_datetime = datetime(
                 selected_date.year, selected_date.month, selected_date.day,
-                selected_time.hour, selected_time.minute, selected_time.second
-            )
+                selected_time.hour, selected_time.minute, selected_time.second)
+            
+            # Load BPM data for the specified datetime
+            global_BPM_data.load_data(combined_datetime)
+
+            # Update the graph with the new BPM data
+            update_graph()
         except ValueError:
             print("Invalid time format. Please use HH:MM:SS.")
     else:
         print("Please select both a date and a time.")
-
-    # Load BPM data
-    global_BPM_data.load_data(combined_datetime)
-
-    # Update the figure
-    update_graph()
 
 def on_load_cols_button_clicked(b):
-
+    """
+    Handle the event when the Load Collimators button is clicked. 
+    Parse the date and time inputs, load collimator data, and update the graph.
+    """
+    # Retrieve the selected date and time from the widgets
     selected_date = date_picker.value
     selected_time_str = time_input.value
 
@@ -242,27 +311,31 @@ def on_load_cols_button_clicked(b):
             # Create a datetime object
             combined_datetime = datetime(
                 selected_date.year, selected_date.month, selected_date.day,
-                selected_time.hour, selected_time.minute, selected_time.second
-            )
+                selected_time.hour, selected_time.minute, selected_time.second)
+
+            # Load collimator data
+            global_collimator_data.load_data(combined_datetime)
+
+            # Update the graph with the new collimator data
+            update_graph()
+
         except ValueError:
             print("Invalid time format. Please use HH:MM:SS.")
     else:
         print("Please select both a date and a time.")
 
-    # Load BPM data
-    global_collimator_data.load_data(combined_datetime)
-
-    # Update the figure
-    update_graph()
-
 def on_reset_button_clicked(b):
-
+    """
+    Handle the event when the Reset button is clicked. 
+    Remove all selected knobs, reset their values, and update the display and graph.
+    """
+    # Remove selected knobs and their associated data
     for knob in selected_knobs[:]:
         selected_knobs.remove(knob)
         del values[knob]  # Remove the value of the knob
         del knob_widgets[knob]  # Remove the widget
         
-    # Re-twiss
+    # Reset knobs to their initial values and re-twiss
     global_data.reset_knobs()
 
     # Update selected knobs and display value
@@ -272,19 +345,23 @@ def on_reset_button_clicked(b):
     update_graph()
 
 def on_cycle_button_clicked(b):
-
+    """
+    Handle the event when the Cycle button is clicked. 
+    Cycle all the data to set a new zero point and update the graph.
+    """
+    # Retrieve the selected element from the widget
     first_element = cycle_input.value
-
-    # Re-twiss
+    print(f'Setting {first_element} as the first element...')
+    # Cycle
     global_data.cycle(first_element)
     
     # Update the figure
     update_graph()
 
 def on_add_button_clicked(b):
-
     """
-    Function to handle adding a knob
+    Handle the event when the Add button is clicked. 
+    Add a new knob to the selected list and create a widget for it.
     """
     # Knob selected in the dropdown menu
     knob = knob_dropdown.value
@@ -295,10 +372,9 @@ def on_add_button_clicked(b):
 
         # Create a new FloatText widget for the selected knob
         knob_widget = FloatText(
-            value=global_data.knobs[global_data.knobs['knob']==knob]['initial value'],
+            value=global_data.knobs[global_data.knobs['knob']==knob]['current value'],
             description=f'{knob}',
-            disabled=False,
-            layout=Layout(width='270px')
+            disabled=False
         )
         # Add the widget to the knob widgets list
         knob_widgets[knob] = knob_widget
@@ -308,7 +384,8 @@ def on_add_button_clicked(b):
 
 def on_remove_button_clicked(b):
     """
-    Function to handle removing a knob
+    Handle the event when the Remove button is clicked. 
+    Remove the selected knob from the list and delete its widget.
     """
     # Knob selected in the dropdown menu
     knob = knob_dropdown.value
@@ -324,7 +401,8 @@ def on_remove_button_clicked(b):
         
 def on_apply_button_clicked(b):
     """
-    Function to apply changes and update the graph
+    Handle the event when the Apply button is clicked. 
+    Apply changes to the knobs and update the graph.
     """
     # Update knobs dictionary based on current values in the knob widgets
     for knob, widget in knob_widgets.items():
@@ -336,7 +414,17 @@ def on_apply_button_clicked(b):
     # Update the figure
     update_graph()
         
-def create_figure():
+def create_figure() -> Tuple[go.Figure, int, int, np.ndarray, np.ndarray]:
+    """
+    Create and return a Plotly figure with multiple traces based on the global data.
+
+    Returns:
+        fig: The constructed Plotly figure.
+        row: The row index for plotting additional traces.
+        col: The column index for plotting additional traces.
+        visibility_b1: Array indicating visibility of elements for beam 1.
+        visibility_b2: Array indicating visibility of elements for beam 2.
+    """
 
     # These correspond to swapping between visibilities of aperture/collimators for beam 1 and 2
     visibility_b1 = np.array([], dtype=bool)
@@ -371,6 +459,7 @@ def create_figure():
 
     # If any additional traces were given as an argument
     if global_additional_traces:
+        # TODO: handle if not a list
         for i in global_additional_traces:
             fig.add_trace(i, row=row, col=col)
             visibility_b1 = np.append(visibility_b1, True)
@@ -447,7 +536,7 @@ def create_figure():
 
 def update_knob_box():
     """
-    Function to update the knob_box layout
+    Updates the layout of the knob_box with current knob widgets.
     """
     # Group the widgets into sets of three per row
     rows = []
@@ -461,7 +550,7 @@ def update_knob_box():
     
 def update_graph():
     """
-    Function to update the graph
+    Updates the graph displayed in the graph_container.
     """
     # Create figure
     fig, row, col, visibility_b1, visibility_b2 = create_figure()
@@ -473,8 +562,21 @@ def update_graph():
     # Put the figure in the graph container
     graph_container.children = [fig_widget]
 
-def update_layout(fig, row, col, visibility_b1, visibility_b2):
+def update_layout(fig: go.Figure, 
+                  row: int, 
+                  col: int, 
+                  visibility_b1: np.ndarray, 
+                  visibility_b2: np.ndarray):
+    """
+    Updates the layout of the given figure with appropriate settings and visibility toggles.
 
+    Parameters:
+        fig: The Plotly figure to be updated.
+        row: The row index where the main plot is located.
+        col: The column index where the main plot is located.
+        visibility_b1: Visibility settings for beam 1.
+        visibility_b2: Visibility settings for beam 2.
+    """
     # Set layout
     fig.update_layout(height=global_height, width=global_width, showlegend=False, xaxis=dict(tickformat=','), yaxis=dict(tickformat=','), plot_bgcolor='white')
 
