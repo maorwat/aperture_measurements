@@ -34,13 +34,13 @@ class ApertureData:
         # Define necessary variables
         self.emitt = emitt
         self.n = n
-        self.length = 26658.88318
-
+    
         # Load line data
         self.line_b1, self.line_b2 = self._load_lines_data(path_b1, path_b2)
 
-        # Define gamma using loaded line
+        # Define gamma and length of the accelerator using loaded line
         self.gamma = self.line_b1.particle_ref.to_pandas()['gamma0'][0]
+        self.length = self.line_b1.get_s_elements()[-1]
 
         # Find knobs
         self._define_knobs()
@@ -52,6 +52,28 @@ class ApertureData:
         self._define_nominal_crossing()
         self._distance_to_nominal('h')
         self._distance_to_nominal('v')
+
+    def _load_lines_data(self, path_b1: str, path_b2: str) -> None:
+        """Load lines data from a JSON file.
+        
+        Parameters:
+            path_b1: Path to the line JSON file for beam 1.
+            path_b2: Path to the line JSON file for beam 2, if not given,
+                    the path will be created by replacing b1 with b2
+        """
+        # If path was selected using select_path_in_SWAN() it will be in a list
+        if isinstance(path_b1, list): path_b1=path_b1[0]
+        # If path for beam 2 was not given, construct it by replacing b1 with b2
+        if not path_b2:
+            path_b2 = str(path_b1).replace('b1', 'b2')
+        # If path was given but was selected with select_path_in_SWAN()
+        else:
+            if isinstance(path_b2, list): path_b2=path_b2[0]
+
+        try:
+            return xt.Line.from_json(path_b1), xt.Line.from_json(path_b2)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File {path_b1} not found.")
 
     def _define_knobs(self) -> None:
         """
@@ -70,81 +92,23 @@ class ApertureData:
         knob_values = [self.line_b1.vv.get(knob) for knob in knobs]
 
         # Create a DataFrame with knobs and their values
-        knobs_df = pd.DataFrame({
+        self.knobs = pd.DataFrame({
             'knob': knobs,
             'initial value': knob_values,
             'current value': knob_values
         })
 
-        # Filter out any rows where any cell is an empty dictionary
-        self.knobs = knobs_df[~knobs_df.applymap(lambda x: x == {}).any(axis=1)].sort_values(by='knob').reset_index(drop=True)
+        self.knobs = self.knobs.sort_values(by='knob').reset_index()
 
-    def reset_knobs(self) -> None:
+    def _define_nominal_crossing(self) -> None:
         """
-        Resets the knobs to their initial values if they have been changed.
-        Then recalculates the twiss parameters.
-        """     
-
-        # Iterate over the knobs DataFrame and reset values where necessary
-        changed_knobs = self.knobs[self.knobs['current value'] != self.knobs['initial value']]
-
-        for _, row in changed_knobs.iterrows():
-            self.change_knob(row['knob'], row['initial value'])
-            # Update the 'current value' to reflect the reset
-            self.knobs.at[row.name, 'current value'] = row['initial value']
-
-        # Recalculate the twiss parameters    
-        self.twiss()
-
-    def _load_lines_data(self, path_b1: str, path_b2: str) -> None:
-        """Load lines data from a JSON file.
-        
-        Parameters:
-            path_b1: Path to the line JSON file for beam 1.
-            path_b2: Path to the line JSON file for beam 2, if not given,
-                    the path will be created by replacing b1 with b2
+        This method extracts the 'name', 'x', 'y', and 's' columns from the twiss DataFrames
+        for both beams and stores them in new attributes 'nom_b1' and 'nom_b2'.
         """
-        if not path_b2:
-            # TODO: handle if a list eg through SWAN
-            path_b2 = str(path_b1).replace('b1', 'b2')
 
-        try:
-            return xt.Line.from_json(path_b1), xt.Line.from_json(path_b2)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"File {path_b1} not found.")
-
-    def load_aperture(self, path_b1: str, path_b2: Optional[str]=None) -> None:
-        # Load and process aperture data
-        self.aper_b1, self.aper_b2 = self._load_aperture_data(path_b1, path_b2)
-    
-    def _load_aperture_data(self, path_b1, path_b2) -> pd.DataFrame:
-        """Load and process aperture data from a file.
-        
-        Parameters:
-            path_b1: Path to aperture all_optics_B1.tfs file.
-            path_b2: Path to aperture all_optics_B4.tfs file, if not given,
-                    the path will be created by replacing B1 with B4.
-
-        Returns:
-            Processeed aperture DataFrames for beams 1 and 2, respectively.
-        """
-        # Create path for the aperture file for b2
-        if not path_b2:
-            path_b2 = str(path_b1).replace('B1', 'B4')
-
-        try:
-            # Drop uneeded columns
-            df1 = tfs.read(path_b1)[['S', 'NAME', 'APER_1', 'APER_2']]
-            df2 = tfs.read(path_b2)[['S', 'NAME', 'APER_1', 'APER_2']]
-            # Get rid of undefined values
-            df1 = df1[(df1['APER_1'] < 0.2) & (df1['APER_1'] != 0) & (df1['APER_2'] < 0.2) & (df1['APER_2'] != 0)]
-            df2 = df2[(df2['APER_1'] < 0.2) & (df2['APER_1'] != 0) & (df2['APER_2'] < 0.2) & (df2['APER_2'] != 0)]
-            # Make sure the aperture aligns with twiss data (if cycling was performed)
-            df1 = match_with_twiss(self.tw_b1, df1)
-            df2 = match_with_twiss(self.tw_b2, df2)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"File {path_b1} not found.")
-        return df1.drop_duplicates(subset=['S']), df2.drop_duplicates(subset=['S'])
+        # Define the nominal crossing for given configuration
+        self.nom_b1 = self.tw_b1[['name', 'x', 'y', 's']].copy()
+        self.nom_b2 = self.tw_b2[['name', 'x', 'y', 's']].copy()
 
     def twiss(self) -> None:
         """
@@ -192,7 +156,45 @@ class ApertureData:
 
         # Select necessary columns
         return twiss_df[['s', 'name', 'x', 'y', 'betx', 'bety']]
-    
+
+    def _distance_to_nominal(self, plane: str) -> None:
+        """
+        Calculates the distance to nominal positions for the specified plane (horizontal or vertical).
+
+        Parameters:
+            plane: The plane for which to calculate the distances ('h' for horizontal, 'v' for vertical).
+        """
+        if plane not in {'h', 'v'}:
+            raise ValueError("The 'plane' parameter must be 'h' for horizontal or 'v' for vertical.")
+
+        if plane == 'h': 
+            up, down, nom, from_nom_to_top, from_nom_to_bottom = 'x_up', 'x_down', 'x', 'x_from_nom_to_top', 'x_from_nom_to_bottom'
+        elif plane == 'v': 
+            up, down, nom, from_nom_to_top, from_nom_to_bottom = 'y_up', 'y_down', 'y', 'y_from_nom_to_top', 'y_from_nom_to_bottom'
+
+        # Ensure tw_b1 is not a slice
+        self.tw_b1 = self.tw_b1.copy()
+        self.tw_b2 = self.tw_b2.copy()
+
+        self.tw_b1.loc[:, from_nom_to_top] = (self.tw_b1[up] - self.nom_b1[nom])*1000
+        self.tw_b1.loc[:, from_nom_to_bottom] = (self.tw_b1[down] - self.nom_b1[nom])*1000
+
+        self.tw_b2.loc[:, from_nom_to_top] = (self.tw_b2[up] - self.nom_b2[nom])*1000
+        self.tw_b2.loc[:, from_nom_to_bottom] = (self.tw_b2[down] - self.nom_b2[nom])*1000
+
+    def _define_sigma(self) -> None:
+        """
+        Calculate and add sigma_x and sigma_y columns to twiss DataFrames for both beams.
+        """
+        # Ensure tw_b1 is not a slice
+        self.tw_b1 = self.tw_b1.copy()
+        self.tw_b2 = self.tw_b2.copy()
+
+        # Add columns for horizontal and vertical sigma
+        for df in [self.tw_b1, self.tw_b2]:
+            df.loc[:, 'sigma_x'] = np.sqrt(df['betx'] * self.emitt / self.gamma)
+            df.loc[:, 'sigma_y'] = np.sqrt(df['bety'] * self.emitt / self.gamma)
+
     def _get_shift(self, first_element: str) -> float:
         """
         Calculates the shift required to set the specified element as the new zero point.
@@ -244,58 +246,6 @@ class ApertureData:
                     except Exception as e:
                         print(f"Error shifting {attr}: {e}")
 
-    def _define_nominal_crossing(self) -> None:
-        """
-        This method extracts the 'name', 'x', 'y', and 's' columns from the twiss DataFrames
-        for both beams and stores them in new attributes 'nom_b1' and 'nom_b2'.
-        """
-
-        # Define the nominal crossing for given configuration
-        self.nom_b1 = self.tw_b1[['name', 'x', 'y', 's']].copy()
-        self.nom_b2 = self.tw_b2[['name', 'x', 'y', 's']].copy()
-
-    def _distance_to_nominal(self, plane: str) -> None:
-        """
-        Calculates the distance to nominal positions for the specified plane (horizontal or vertical).
-
-        Parameters:
-            plane: The plane for which to calculate the distances ('h' for horizontal, 'v' for vertical).
-
-        Raises:
-            ValueError: If the plane is not 'h' or 'v'.
-        """
-        if plane not in {'h', 'v'}:
-            raise ValueError("The 'plane' parameter must be 'h' for horizontal or 'v' for vertical.")
-
-        if plane == 'h': 
-            up, down, nom, from_nom_to_top, from_nom_to_bottom = 'x_up', 'x_down', 'x', 'x_from_nom_to_top', 'x_from_nom_to_bottom'
-        elif plane == 'v': 
-            up, down, nom, from_nom_to_top, from_nom_to_bottom = 'y_up', 'y_down', 'y', 'y_from_nom_to_top', 'y_from_nom_to_bottom'
-
-        # Ensure tw_b1 is not a slice
-        self.tw_b1 = self.tw_b1.copy()
-        self.tw_b2 = self.tw_b2.copy()
-
-        self.tw_b1.loc[:, from_nom_to_top] = (self.tw_b1[up] - self.nom_b1[nom])*1000
-        self.tw_b1.loc[:, from_nom_to_bottom] = (-self.tw_b1[down] + self.nom_b1[nom])*1000
-
-        self.tw_b2.loc[:, from_nom_to_top] = (self.tw_b2[up] - self.nom_b2[nom])*1000
-        self.tw_b2.loc[:, from_nom_to_bottom] = (-self.tw_b2[down] + self.nom_b2[nom])*1000
-
-    def _define_sigma(self) -> None:
-        """
-        Calculate and add sigma_x and sigma_y columns to twiss DataFrames for both beams.
-        """
-
-        # Ensure tw_b1 is not a slice
-        self.tw_b1 = self.tw_b1.copy()
-        self.tw_b2 = self.tw_b2.copy()
-
-        # Add columns for horizontal and vertical sigma
-        for df in [self.tw_b1, self.tw_b2]:
-            df.loc[:, 'sigma_x'] = np.sqrt(df['betx'] * self.emitt / self.gamma)
-            df.loc[:, 'sigma_y'] = np.sqrt(df['bety'] * self.emitt / self.gamma)
-
     def envelope(self, n: float) -> None:
         """
         Calculate the envelope edges for the twiss DataFrames based on the envelope size.
@@ -317,7 +267,98 @@ class ApertureData:
             df['x_down'] = df['x'] - n * df['sigma_x']
             df['y_up'] = df['y'] + n * df['sigma_y']
             df['y_down'] = df['y'] - n * df['sigma_y']
-            
+
+    def change_knob(self, knob: str, value: float) -> None:
+        """
+        Update the specified knob to the given value for both beam lines (b1 and b2).
+        Also update the corresponding entry in the knobs DataFrame.
+
+        Parameters:
+            knob: The name of the knob to be changed.
+            value: The new value to set for the knob.
+        """
+
+        self.line_b1.vars[knob] = value
+        self.line_b2.vars[knob] = value
+
+        self.knobs.loc[self.knobs['knob'] == knob, 'current value'] = value
+
+    def reset_knobs(self) -> None:
+        """
+        Resets the knobs to their initial values if they have been changed.
+        Then recalculates the twiss parameters.
+        """     
+
+        # Iterate over the knobs DataFrame and reset values where necessary
+        changed_knobs = self.knobs[self.knobs['current value'] != self.knobs['initial value']]
+
+        for _, row in changed_knobs.iterrows():
+            self.change_knob(row['knob'], row['initial value'])
+            # Update the 'current value' to reflect the reset
+            self.knobs.at[row.name, 'current value'] = row['initial value']
+
+        # Recalculate the twiss parameters    
+        self.twiss()
+
+    def load_aperture(self, path_b1: str, path_b2: Optional[str]=None) -> None:
+        # Load and process aperture data
+        self.aper_b1, self.aper_b2 = self._load_aperture_data(path_b1, path_b2)
+    
+    def _load_aperture_data(self, path_b1, path_b2) -> pd.DataFrame:
+        """Load and process aperture data from a file.
+        
+        Parameters:
+            path_b1: Path to aperture all_optics_B1.tfs file.
+            path_b2: Path to aperture all_optics_B4.tfs file, if not given,
+                    the path will be created by replacing B1 with B4.
+
+        Returns:
+            Processeed aperture DataFrames for beams 1 and 2, respectively.
+        """
+
+        # If path was selected using select_path_in_SWAN() it will be in a list
+        if isinstance(path_b1, list): path_b1=path_b1[0]
+        # If path for beam 2 was not given, construct it by replacing b1 with b2
+        if not path_b2:
+            path_b2 = str(path_b1).replace('B1', 'B4')
+        # If path was given but was selected with select_path_in_SWAN()
+        else:
+            if isinstance(path_b2, list): path_b2=path_b2[0]
+
+        try:
+            # Drop uneeded columns
+            df1 = tfs.read(path_b1)[['S', 'NAME', 'APER_1', 'APER_2']]
+            df2 = tfs.read(path_b2)[['S', 'NAME', 'APER_1', 'APER_2']]
+            # Get rid of undefined values
+            df1 = df1[(df1['APER_1'] < 0.2) & (df1['APER_1'] != 0) & (df1['APER_2'] < 0.2) & (df1['APER_2'] != 0)]
+            df2 = df2[(df2['APER_1'] < 0.2) & (df2['APER_1'] != 0) & (df2['APER_2'] < 0.2) & (df2['APER_2'] != 0)]
+            # Make sure the aperture aligns with twiss data (if cycling was performed)
+            df1 = match_with_twiss(self.tw_b1, df1)
+            df2 = match_with_twiss(self.tw_b2, df2)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File {path_b1} not found.")
+        return df1.drop_duplicates(subset=['S']), df2.drop_duplicates(subset=['S'])
+    
+    def load_collimators_from_yaml(self, path: str) -> None:
+        """
+        Loads collimator data from a YAML file and creates DataFrames for collimator positions.
+
+        Parameters:
+            path : The path to the collimators YAML file. If None, a default path is used.
+        """
+
+        # Load the file
+        if isinstance(path, list): path=path[0]
+        with open(path, 'r') as file:
+            f = yaml.safe_load(file)
+
+        # Create the DataFrames
+        self.colx_b1 = self._get_col_df_from_yaml(f, 0, 'b1', 'h')
+        self.colx_b2 = self._get_col_df_from_yaml(f, 0, 'b2', 'h')
+
+        self.coly_b1 = self._get_col_df_from_yaml(f, 90, 'b1', 'v')
+        self.coly_b2 = self._get_col_df_from_yaml(f, 90, 'b2', 'v')
+
     def _get_col_df_from_yaml(self, f: Dict[str, Any], angle: float, beam: str, plane: str) -> pd.DataFrame:
         """
         Creates a DataFrame containing collimator data for the specified beam and plane.
@@ -363,26 +404,6 @@ class ApertureData:
         # Return the collimators data
         return col
     
-    def load_collimators_from_yaml(self, path: str) -> None:
-        """
-        Loads collimator data from a YAML file and creates DataFrames for collimator positions.
-
-        Parameters:
-            path : The path to the collimators YAML file. If None, a default path is used.
-        """
-
-        # Load the file
-
-        with open(path, 'r') as file:
-            f = yaml.safe_load(file)
-
-        # Create the DataFrames
-        self.colx_b1 = self._get_col_df_from_yaml(f, 0, 'b1', 'h')
-        self.colx_b2 = self._get_col_df_from_yaml(f, 0, 'b2', 'h')
-
-        self.coly_b1 = self._get_col_df_from_yaml(f, 90, 'b1', 'v')
-        self.coly_b2 = self._get_col_df_from_yaml(f, 90, 'b2', 'v')
-    
     def load_elements(self, path: str) -> None:
         """
         Loads machine component data from a TFS file and matches it with the twiss data.
@@ -391,24 +412,10 @@ class ApertureData:
             path : The path to the machine components TFS file. If None, a default path is used.
 
         """
+        if isinstance(path, list): path=path[0]
 
         # Load the file
         df = tfs.read(path)
 
         # Make sure the elements align with twiss data (if cycling was performed)
         self.elements = match_with_twiss(self.tw_b1, df)
-    
-    def change_knob(self, knob: str, value: float) -> None:
-        """
-        Update the specified knob to the given value for both beam lines (b1 and b2).
-        Also update the corresponding entry in the knobs DataFrame.
-
-        Parameters:
-            knob: The name of the knob to be changed.
-            value: The new value to set for the knob.
-        """
-
-        self.line_b1.vars[knob] = value
-        self.line_b2.vars[knob] = value
-
-        self.knobs.loc[self.knobs['knob'] == knob, 'current value'] = value

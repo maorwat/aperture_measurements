@@ -116,6 +116,14 @@ class TestAperData(unittest.TestCase):
 
     def test_reset_knobs(self):
 
+        self.data.change_knob('on_x5', 0)
+        self.data.change_knob('on_x8h', 0)
+        self.data.twiss()
+
+        self.data.reset_knobs()
+
+        self.assertTrue((self.data.knobs['initial value']==self.data.knobs['current value']).all())
+
         pass
 
 if __name__ == '__main__':

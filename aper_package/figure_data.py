@@ -22,8 +22,8 @@ def plot_BPM_data(data: object,
     data.process(twiss)
 
     # Select data based on plane
-    if plane == 'h': y_b1, y_b2 = data.b1.x, data.b2.x
-    elif plane == 'v': y_b1, y_b2 = data.b1.y, data.b2.y
+    if plane == 'horizontal': y_b1, y_b2 = data.b1.x, data.b2.x
+    elif plane == 'vertical': y_b1, y_b2 = data.b1.y, data.b2.y
 
     # Make sure the units are in meters like twiss data
     b1 = go.Scatter(x=data.b1.s, y=y_b1/1e6, mode='markers', 
@@ -141,8 +141,8 @@ def plot_collimators(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scat
         Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and the list of Plotly scatter traces.
     """
     # Select the appropriate DataFrames based on the plane
-    if plane == 'h': df_b1, df_b2 = data.colx_b1, data.colx_b2
-    elif plane == 'v': df_b1, df_b2 = data.coly_b1, data.coly_b2
+    if plane == 'horizontal': df_b1, df_b2 = data.colx_b1, data.colx_b2
+    elif plane == 'vertical': df_b1, df_b2 = data.coly_b1, data.coly_b2
 
     # Create empty lists for traces
     collimators = []
@@ -184,7 +184,7 @@ def plot_envelopes(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatte
                             "element: %{text}<br>"
                             "distance from nominal: %{customdata} [mm]")
 
-    if plane == 'h':
+    if plane == 'horizontal':
 
         upper_b1 = go.Scatter(x=data.tw_b1.s, y=data.tw_b1.x_up, mode='lines', 
                                   text = data.tw_b1.name, name='Upper envelope beam 1', 
@@ -203,7 +203,7 @@ def plot_envelopes(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatte
                                   line=dict(color='rgba(255,0,0,0)'), fill='tonexty', fillcolor='rgba(255,0,0,0.1)', 
                                   customdata=data.tw_b2.x_from_nom_to_bottom, hovertemplate=hover_template)
         
-    elif plane == 'v':
+    elif plane == 'vertical':
 
         upper_b1 = go.Scatter(x=data.tw_b1.s, y=data.tw_b1.y_up, mode='lines', 
                                   text = data.tw_b1.name, name='Upper envelope beam 1', 
@@ -239,8 +239,8 @@ def plot_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.S
         Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and a list of Plotly scatter traces.
     """
 
-    if plane == 'h': y_b1, y_b2 = data.tw_b1.x, data.tw_b2.x
-    elif plane == 'v': y_b1, y_b2 = data.tw_b1.y, data.tw_b2.y
+    if plane == 'horizontal': y_b1, y_b2 = data.tw_b1.x, data.tw_b2.x
+    elif plane == 'vertical': y_b1, y_b2 = data.tw_b1.y, data.tw_b2.y
 
     b1 = go.Scatter(x=data.tw_b1.s, y=y_b1, mode='lines', line=dict(color='blue'), text = data.tw_b1.name, name='Beam 1')
     b2 = go.Scatter(x=data.tw_b2.s, y=y_b2, mode='lines', line=dict(color='red'), text = data.tw_b2.name, name='Beam 2')
@@ -259,8 +259,8 @@ def plot_nominal_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, L
         Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and a list of Plotly scatter traces.
     """
 
-    if plane == 'h': y_b1, y_b2 = data.nom_b1.x, data.nom_b2.x
-    elif plane == 'v': y_b1, y_b2 = data.nom_b1.y, data.nom_b2.y
+    if plane == 'horizontal': y_b1, y_b2 = data.nom_b1.x, data.nom_b2.x
+    elif plane == 'vertical': y_b1, y_b2 = data.nom_b1.y, data.nom_b2.y
 
     b1 = go.Scatter(x=data.nom_b1.s, y=y_b1, mode='lines', line=dict(color='blue', dash='dash'), text = data.nom_b1.name, name='Nominal beam 1')
     b2 = go.Scatter(x=data.nom_b2.s, y=y_b2, mode='lines', line=dict(color='red', dash='dash'), text = data.nom_b2.name, name='Nominal beam 2')
@@ -279,7 +279,7 @@ def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter
         Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and a list of Plotly scatter traces.
     """
 
-    if plane == 'h':
+    if plane == 'horizontal':
             
         # Aperture
         top_aper_b1 = go.Scatter(x=data.aper_b1.S, y=data.aper_b1.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')
@@ -287,7 +287,7 @@ def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter
         top_aper_b2 = go.Scatter(x=data.aper_b2.S, y=data.aper_b2.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False)
         bottom_aper_b2 = go.Scatter(x=data.aper_b2.S, y=-data.aper_b2.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False) 
 
-    elif plane == 'v':
+    elif plane == 'vertical':
             
         # Aperture
         top_aper_b1 = go.Scatter(x=data.aper_b1.S, y=data.aper_b1.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')

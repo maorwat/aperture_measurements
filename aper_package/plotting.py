@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Any
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -9,11 +9,11 @@ from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText, DatePicke
 from IPython.display import display
 
 from aper_package.figure_data import *
+from aper_package.timber_data import BPMData
+from aper_package.timber_data import CollimatorsData
 
-def plot(data: object, 
-         plane: str, 
-         BPM_data: Optional[object] = None, 
-         collimator_data: Optional[object] = None, 
+def plot(data: object,
+         spark: Optional[Any] = None, 
          width: Optional[int] = 1600, 
          height: Optional[int] = 600, 
          additional_traces: Optional[list] = None) -> None:
@@ -33,17 +33,12 @@ def plot(data: object,
     # Set global variables
     global knob_dropdown, add_button, remove_button, apply_button, graph_container, knob_box
     global cycle_button, cycle_input, date_picker, time_input, load_BPMs_button, load_cols_button, envelope_button, envelope_input
-    global values, selected_knobs, knob_widgets
+    global values, selected_knobs, knob_widgets, plane_button, plane_dropdown
     global global_data, global_plane, global_BPM_data, global_collimator_data
     global global_width, global_height, global_additional_traces
 
     # Set the arguments as global
     global_data = data
-    global_plane = plane
-
-    global_BPM_data = BPM_data
-    global_collimator_data = collimator_data
-
     global_width = width
     global_height = height
     global_additional_traces = additional_traces
@@ -54,8 +49,10 @@ def plot(data: object,
     values = {}
 
     # Define and configure widgets
-    add_button, remove_button, apply_button, cycle_button, reset_button, envelope_button = define_buttons()
-    knob_dropdown, knob_box, cycle_input, envelope_input, graph_container = define_widgets()
+    add_button, remove_button, apply_button, cycle_button, reset_button, envelope_button, plane_button = define_buttons()
+    knob_dropdown, knob_box, cycle_input, envelope_input, graph_container, plane_dropdown = define_widgets()
+
+    global_plane = plane_dropdown.value
 
     # Set up event handlers
     add_button.on_click(on_add_button_clicked)
@@ -64,39 +61,44 @@ def plot(data: object,
     cycle_button.on_click(on_cycle_button_clicked)
     reset_button.on_click(on_reset_button_clicked)
     envelope_button.on_click(on_envelope_button_clicked)
+    plane_button.on_click(on_plane_button_clicked)
 
     # Set the order of some of the controls
     knob_selection_controls = [knob_dropdown, add_button, remove_button, apply_button, reset_button]
     cycle_controls = [cycle_input, cycle_button]
     envelope_controls = [envelope_input, envelope_button]
+    plane_controls = [plane_dropdown, plane_button]
 
     # Create an empty list for timber controls
     timber_controls = []
-    # Only add timber buttons if given as an argument
-    if BPM_data or collimator_data:
 
-        if BPM_data:
-            load_BPMs_button = Button(description="Load BPMs", style=widgets.ButtonStyle(button_color='pink'))
-            load_BPMs_button.on_click(on_load_BPMs_button_clicked)
-            timber_controls.append(load_BPMs_button)
-        if collimator_data:
-            load_cols_button = Button(description="Load collimators", style=widgets.ButtonStyle(button_color='pink'))
-            load_cols_button.on_click(on_load_cols_button_clicked)
-            timber_controls.append(load_cols_button)
+    # Only add timber buttons if spark given as an argument
+    if spark:
+
+        global_collimator_data, global_BPM_data = initialise_timber_data(spark)
+
+        load_BPMs_button = Button(description="Load BPMs", style=widgets.ButtonStyle(button_color='pink'))
+        load_BPMs_button.on_click(on_load_BPMs_button_clicked)
+        timber_controls.append(load_BPMs_button)
+
+        load_cols_button = Button(description="Load collimators", style=widgets.ButtonStyle(button_color='pink'))
+        load_cols_button.on_click(on_load_cols_button_clicked)
+        timber_controls.append(load_cols_button)
 
         # Time selection widgets
         date_picker, time_input = define_time_widgets()
         time_controls = [date_picker, time_input]
 
         # Define layout depending if timber buttons present or not
-        first_row_controls = cycle_controls+knob_selection_controls
-        second_row_controls = envelope_controls+time_controls+timber_controls
-    else:
-        first_row_controls = knob_selection_controls
-        second_row_controls = cycle_controls+envelope_controls
+        timber_row_controls = time_controls+timber_controls
+    
+    else: global_BPM_data, global_collimator_data, timber_row_controls = None, None, None
+
+    first_row_controls = knob_selection_controls
+    second_row_controls = cycle_controls+envelope_controls+plane_controls
 
     # Put all the widgets together into a nice layout
-    everything = define_widget_layout(first_row_controls, second_row_controls)
+    everything = define_widget_layout(first_row_controls, second_row_controls, timber_row_controls)
 
     # Display the widgets and the graph
     display(everything)
@@ -104,7 +106,16 @@ def plot(data: object,
     # Plot all traces
     update_graph()
 
-def define_widget_layout(first_row_controls: List[widgets.Widget], second_row_controls: List[widgets.Widget]) -> VBox:
+def initialise_timber_data(spark):
+
+    collimators_object = CollimatorsData(spark)
+    BPM_object = BPMData(spark)
+
+    return collimators_object, BPM_object
+
+def define_widget_layout(first_row_controls: List[widgets.Widget], 
+                         second_row_controls: List[widgets.Widget],
+                         timber_row_controls: Optional[List[widgets.Widget]] = None) -> VBox:
     """
     Define and arrange the layout of the widgets.
 
@@ -137,8 +148,23 @@ def define_widget_layout(first_row_controls: List[widgets.Widget], second_row_co
             border='solid 2px #ccc'))       # Border around the HBox
 
     # Combine both rows, knob box, and graph container into a VBox layout
+    if timber_row_controls: 
+        # Create layout for the timber row of controls
+        timber_row_layout = HBox(
+            timber_row_controls,
+            layout=Layout(
+                justify_content='space-around', # Distribute space evenly
+                align_items='center',           # Center align all items
+                width='100%',                   # Full width of the container
+                padding='10px',                 # Add padding around controls
+                border='solid 2px #ccc'))       # Border around the HBox
+        
+        full_column = [first_row_layout, knob_box, second_row_layout, timber_row_layout, graph_container]
+
+    else: full_column = [first_row_layout, knob_box, second_row_layout, graph_container]
+
     full_layout = VBox(
-        [first_row_layout, knob_box, second_row_layout, graph_container],
+        full_column,
         layout=Layout(
             justify_content='center',       # Center align the VBox content horizontally
             align_items='center',           # Center align all items vertically
@@ -200,8 +226,10 @@ def define_buttons()-> Tuple[Button, Button, Button, Button, Button, Button]:
     reset_button = Button(description="Reset knobs", style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)'))
     # Button to change envelope size
     envelope_button = Button(description="Apply", style=widgets.ButtonStyle(button_color='pink'))
+    # Button to change between planes
+    plane_button = Button(description="Switch", style=widgets.ButtonStyle(button_color='pink'))
 
-    return add_button, remove_button, apply_button, cycle_button, reset_button, envelope_button
+    return add_button, remove_button, apply_button, cycle_button, reset_button, envelope_button, plane_button
 
 def define_widgets() -> Tuple[Dropdown, VBox, Text, FloatText, VBox]:
     """
@@ -240,7 +268,7 @@ def define_widgets() -> Tuple[Dropdown, VBox, Text, FloatText, VBox]:
     # Create a float widget to specify envelope size
     envelope_input = FloatText(
             value=global_data.n,                    # Initial value (empty string)
-            description='Size of envelope [σ]:',    # Label for the widget 
+            description='Envelope size [σ]:',    # Label for the widget 
             style={'description_width': 'initial'}, # Adjust the width of the description label
             layout=Layout(width='300px'))           # Set the width of the widget
         
@@ -252,7 +280,23 @@ def define_widgets() -> Tuple[Dropdown, VBox, Text, FloatText, VBox]:
         padding='10px',
         border='solid 2px #eee'))
     
-    return knob_dropdown, knob_box, cycle_input, envelope_input, graph_container
+    # Create a dropdown to select a plane
+    plane_dropdown = Dropdown(
+        options=['horizontal', 'vertical'],
+        description='Select plane:',
+        disabled=False)
+    
+    return knob_dropdown, knob_box, cycle_input, envelope_input, graph_container, plane_dropdown
+
+def on_plane_button_clicked(b):
+
+    selected_plane = plane_dropdown.value
+
+    print('Switching between planes...')
+    global global_plane
+    global_plane = selected_plane
+
+    update_graph()
 
 def on_envelope_button_clicked(b):
     """
@@ -584,8 +628,9 @@ def update_layout(fig: go.Figure,
     fig.update_xaxes(title_text="s [m]", row=row, col=col)
 
     # Change y limits and labels
-    if global_plane == 'h': title = 'x [m]'
-    elif global_plane == 'v': title = 'y [m]'
+    if global_plane == 'horizontal': title = 'x [m]'
+    elif global_plane == 'vertical': title = 'y [m]'
+
     fig.update_yaxes(title_text=title, range = [-0.05, 0.05], row=row, col=col)
 
     # If aperture/collimators were loaded add buttons to switch between beam 1 and beam 2
