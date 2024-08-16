@@ -30,7 +30,7 @@ def plot_BPM_data(data: object,
                           line=dict(color='blue'), text = data.b1.name, name='BPM beam 1')
     
     b2 = go.Scatter(x=data.b2.s, y=y_b2/1e6, mode='markers', 
-                          line=dict(color='red'), text = data.b2.name, name='BPM beam 2')
+                          line=dict(color='red'), text = data.b2.name, name='BPM beam 2', visible=False)
     
     return np.array([True, False]), [b1, b2]
 
