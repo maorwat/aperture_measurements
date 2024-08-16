@@ -31,7 +31,7 @@ class BPMData:
             t: A datetime object or a list containing a datetime object representing the time to fetch data.
         """
         
-        print("Loading BPM data...")
+        print("Loading BPM data...                                      ", end="\r")
 
         # Define the end time for data fetching
         end_time = t + timedelta(seconds=1)
@@ -59,7 +59,7 @@ class BPMData:
             'y': bpm_readings_v
         })
 
-        print("Done loading BPM data.")
+        print("Done loading BPM data.                                      ", end="\r")
 
     def process(self, twiss: object) -> None:
         """
@@ -118,7 +118,7 @@ class CollimatorsData:
         for i, name in enumerate(names_b1): names_b1[i]=name+':MEAS_LVDT_GD'
         for i, name in enumerate(names_b2): names_b2[i]=name+':MEAS_LVDT_GD'
 
-        print("Loading collimators data...")
+        print("Loading collimators data...                                      ", end="\r")
 
         col_b1_from_timber = self.ldb.get(names_b1, t, t+timedelta(seconds=1)) 
         col_b2_from_timber = self.ldb.get(names_b2, t, t+timedelta(seconds=1))
@@ -144,7 +144,7 @@ class CollimatorsData:
         self.coly_b1 = col_b1[col_b1['angle']==90].dropna()
         self.coly_b2 = col_b2[col_b2['angle']==90].dropna()
 
-        print("Done loading collimators data.")
+        print("Done loading collimators data.                                      ", end="\r")
         
     def process(self, twiss: object) -> None:
         """

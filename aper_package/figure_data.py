@@ -32,7 +32,7 @@ def plot_BPM_data(data: object,
     b2 = go.Scatter(x=data.b2.s, y=y_b2/1e6, mode='markers', 
                           line=dict(color='red'), text = data.b2.name, name='BPM beam 2')
     
-    return np.full(2, True), [b1, b2]
+    return np.array([True, False]), [b1, b2]
 
 def plot_machine_components(data: object) -> Tuple[np.ndarray, List[go.Scatter]]:
     """
@@ -196,10 +196,10 @@ def plot_envelopes(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatte
                                   customdata=data.tw_b1.x_from_nom_to_bottom, hovertemplate=hover_template)
         upper_b2 = go.Scatter(x=data.tw_b2.s, y=data.tw_b2.x_up, mode='lines', 
                                   text = data.tw_b2.name, name='Upper envelope beam 2', 
-                                  fill=None, line=dict(color='rgba(255,0,0,0)'),
+                                  fill=None, line=dict(color='rgba(255,0,0,0)'), visible=False,
                                   customdata=data.tw_b2.x_from_nom_to_top, hovertemplate=hover_template)
         lower_b2 = go.Scatter(x=data.tw_b2.s, y=data.tw_b2.x_down, mode='lines', 
-                                  text = data.tw_b2.name, name='Lower envelope beam 2', 
+                                  text = data.tw_b2.name, name='Lower envelope beam 2', visible=False, 
                                   line=dict(color='rgba(255,0,0,0)'), fill='tonexty', fillcolor='rgba(255,0,0,0.1)', 
                                   customdata=data.tw_b2.x_from_nom_to_bottom, hovertemplate=hover_template)
         
@@ -215,14 +215,14 @@ def plot_envelopes(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatte
                                   customdata=data.tw_b1.y_from_nom_to_bottom, hovertemplate=hover_template)
         upper_b2 = go.Scatter(x=data.tw_b2.s, y=data.tw_b2.y_up, mode='lines', 
                                   text = data.tw_b2.name, name='Upper envelope beam 2', 
-                                  fill=None, line=dict(color='rgba(255,0,0,0)'),
+                                  fill=None, line=dict(color='rgba(255,0,0,0)'), visible=False,
                                   customdata=data.tw_b2.y_from_nom_to_top, hovertemplate=hover_template)
         lower_b2 = go.Scatter(x=data.tw_b2.s, y=data.tw_b2.y_down, mode='lines', 
-                                  text = data.tw_b2.name, name='Lower envelope beam 2', 
+                                  text = data.tw_b2.name, name='Lower envelope beam 2', visible=False, 
                                   line=dict(color='rgba(255,0,0,0)'), fill='tonexty', fillcolor='rgba(255,0,0,0.1)',
                                   customdata=data.tw_b2.y_from_nom_to_bottom, hovertemplate=hover_template)
         
-    visibility = np.full(4, True)
+    visibility = np.array([True, True, False, False])
     traces = [upper_b1, lower_b1, upper_b2, lower_b2]
 
     return visibility, traces
@@ -243,9 +243,9 @@ def plot_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.S
     elif plane == 'vertical': y_b1, y_b2 = data.tw_b1.y, data.tw_b2.y
 
     b1 = go.Scatter(x=data.tw_b1.s, y=y_b1, mode='lines', line=dict(color='blue'), text = data.tw_b1.name, name='Beam 1')
-    b2 = go.Scatter(x=data.tw_b2.s, y=y_b2, mode='lines', line=dict(color='red'), text = data.tw_b2.name, name='Beam 2')
+    b2 = go.Scatter(x=data.tw_b2.s, y=y_b2, mode='lines', line=dict(color='red'), text = data.tw_b2.name, name='Beam 2', visible=False)
     
-    return np.full(2, True), [b1, b2]
+    return np.array([True, False]), [b1, b2]
 
 def plot_nominal_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
     """
@@ -263,9 +263,9 @@ def plot_nominal_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, L
     elif plane == 'vertical': y_b1, y_b2 = data.nom_b1.y, data.nom_b2.y
 
     b1 = go.Scatter(x=data.nom_b1.s, y=y_b1, mode='lines', line=dict(color='blue', dash='dash'), text = data.nom_b1.name, name='Nominal beam 1')
-    b2 = go.Scatter(x=data.nom_b2.s, y=y_b2, mode='lines', line=dict(color='red', dash='dash'), text = data.nom_b2.name, name='Nominal beam 2')
+    b2 = go.Scatter(x=data.nom_b2.s, y=y_b2, mode='lines', line=dict(color='red', dash='dash'), text = data.nom_b2.name, name='Nominal beam 2', visible=False)
     
-    return np.full(2, True), [b1, b2]
+    return np.array([True, False]), [b1, b2]
 
 def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
     """

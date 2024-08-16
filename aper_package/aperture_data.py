@@ -115,11 +115,11 @@ class ApertureData:
         Compute and process the twiss parameters for both beams.
         """
         # Generate twiss
-        print('Computing twiss for beam 1...')
+        print('Computing twiss for beam 1...                                      ', end="\r")
         tw_b1 = self.line_b1.twiss(skip_global_quantities=True).to_pandas()
-        print('Computing twiss for beam 2...')
+        print('Computing twiss for beam 2...                                      ', end="\r")
         tw_b2 = self.line_b2.twiss(skip_global_quantities=True, reverse=True).to_pandas()
-        print('Done computing twiss.')
+        print('Done computing twiss.                                      ', end="\r")
 
         # Process the twiss DataFrames
         self.tw_b1 = self._process_twiss(tw_b1)
@@ -237,14 +237,15 @@ class ApertureData:
             'S': ['aper_b1', 'aper_b2', 'elements']
         }
 
-        # Shift the attributes
-        for shift_type, attrs in attributes_to_shift.items():
-            for attr in attrs:
-                if hasattr(self, attr):
-                    try:
-                        setattr(self, attr, shift_by(getattr(self, attr), shift, shift_type))
-                    except Exception as e:
-                        print(f"Error shifting {attr}: {e}")
+        if shift != 0:
+            # Shift the attributes
+            for shift_type, attrs in attributes_to_shift.items():
+                for attr in attrs:
+                    if hasattr(self, attr):
+                        try:
+                            setattr(self, attr, shift_by(getattr(self, attr), shift, shift_type))
+                        except Exception as e:
+                            print(f"Error shifting {attr}: {e}")
 
     def envelope(self, n: float) -> None:
         """
