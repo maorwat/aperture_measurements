@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Union, List
 import pytimber
 from datetime import datetime, timedelta
 
-from aper_package.utils import shift_by
+from aper_package.utils import shift_by, print_and_clear
 
 class BPMData:
 
@@ -31,7 +31,7 @@ class BPMData:
             t: A datetime object or a list containing a datetime object representing the time to fetch data.
         """
         
-        print("Loading BPM data...                                      ", end="\r")
+        print_and_clear("Loading BPM data...")
 
         # Define the end time for data fetching
         end_time = t + timedelta(seconds=1)
@@ -42,24 +42,27 @@ class BPMData:
             bpm_positions_v = self.ldb.get('BFC.LHC:OrbitAcq:positionsV', t, end_time)
             bpm_names_data = self.ldb.get('BFC.LHC:Mappings:fBPMNames_h', t, t + timedelta(minutes=1))
         except Exception as e:
-            print(f"Error loading BPM data: {e}")
+            print_and_clear(f"Error loading BPM data: {e}")
             return
 
-        # Extract BPM readings
-        bpm_readings_h = bpm_positions_h['BFC.LHC:OrbitAcq:positionsH'][1][0]  
-        bpm_readings_v = bpm_positions_v['BFC.LHC:OrbitAcq:positionsV'][1][0] 
+        try:
+            # Extract BPM readings
+            bpm_readings_h = bpm_positions_h['BFC.LHC:OrbitAcq:positionsH'][1][0]  
+            bpm_readings_v = bpm_positions_v['BFC.LHC:OrbitAcq:positionsV'][1][0] 
 
-        # Ensure BPM names are in lowercase for merging with Twiss data later
-        bpm_names = np.char.lower(bpm_names_data['BFC.LHC:Mappings:fBPMNames_h'][1][0].astype(str))
+            # Ensure BPM names are in lowercase for merging with Twiss data later
+            bpm_names = np.char.lower(bpm_names_data['BFC.LHC:Mappings:fBPMNames_h'][1][0].astype(str))
 
-        # Create a DataFrame with the extracted data
-        self.data = pd.DataFrame({
-            'name': bpm_names,
-            'x': bpm_readings_h,
-            'y': bpm_readings_v
-        })
+            # Create a DataFrame with the extracted data
+            self.data = pd.DataFrame({
+                'name': bpm_names,
+                'x': bpm_readings_h,
+                'y': bpm_readings_v
+            })
 
-        print("Done loading BPM data.                                      ", end="\r")
+        except KeyError: self.data = None
+
+        print_and_clear("Done loading BPM data.")
 
     def process(self, twiss: object) -> None:
         """
@@ -90,7 +93,7 @@ class CollimatorsData:
         """
         # initialise the logging
         self.ldb = pytimber.LoggingDB(spark_session=spark)
-        self.yaml_path = yaml_path if isinstance(yaml_path, str) else yaml_path[0]
+        self.yaml_path = yaml_path
 
     def load_data(self, t: datetime) -> None:
         """
@@ -118,7 +121,7 @@ class CollimatorsData:
         for i, name in enumerate(names_b1): names_b1[i]=name+':MEAS_LVDT_GD'
         for i, name in enumerate(names_b2): names_b2[i]=name+':MEAS_LVDT_GD'
 
-        print("Loading collimators data...                                      ", end="\r")
+        print_and_clear("Loading collimators data...")
 
         col_b1_from_timber = self.ldb.get(names_b1, t, t+timedelta(seconds=1)) 
         col_b2_from_timber = self.ldb.get(names_b2, t, t+timedelta(seconds=1))
@@ -129,7 +132,7 @@ class CollimatorsData:
                 name_to_search = row['name'].upper()+':MEAS_LVDT_GD'
                 # Make sure the gaps are in units of metres to match everythong else
                 col_b1.at[index, 'gap'] = col_b1_from_timber[name_to_search][1][0]/1e3
-            except: continue
+            except: col_b1.at[index, 'gap'] = np.nan
 
         # Iterate over all rows and add the gap column's values
         for index, row in col_b2.iterrows():
@@ -137,14 +140,14 @@ class CollimatorsData:
                 name_to_search = row['name'].upper()+':MEAS_LVDT_GD'
                 # Make sure the gaps are in units of metres to match everythong else
                 col_b2.at[index, 'gap'] = col_b2_from_timber[name_to_search][1][0]/1e3
-            except: continue
+            except: col_b2.at[index, 'gap'] = np.nan
 
         self.colx_b1 = col_b1[col_b1['angle']==0].dropna()
         self.colx_b2 = col_b2[col_b2['angle']==0].dropna()
         self.coly_b1 = col_b1[col_b1['angle']==90].dropna()
         self.coly_b2 = col_b2[col_b2['angle']==90].dropna()
 
-        print("Done loading collimators data.                                      ", end="\r")
+        print_and_clear("Done loading collimators data.")
         
     def process(self, twiss: object) -> None:
         """

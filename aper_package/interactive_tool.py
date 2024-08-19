@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List, Tuple, Any
 
 import plotly.graph_objects as go
@@ -11,6 +11,7 @@ from IPython.display import display, clear_output
 from ipyfilechooser import FileChooser
 
 from aper_package.figure_data import *
+from aper_package.utils import print_and_clear
 from aper_package.timber_data import BPMData
 from aper_package.timber_data import CollimatorsData
 from aper_package.aperture_data import ApertureData
@@ -143,9 +144,9 @@ class InteractiveTool():
     def create_file_choosers(self):
 
         # Create filechoosers
-        self.file_chooser_line = FileChooser(self.initial_path)
-        self.file_chooser_aperture = FileChooser(self.initial_path)
-        self.file_chooser_optics = FileChooser(self.initial_path)
+        self.file_chooser_line = FileChooser(self.initial_path, layout=Layout(width='350px'))
+        self.file_chooser_aperture = FileChooser(self.initial_path, layout=Layout(width='350px'))
+        self.file_chooser_optics = FileChooser(self.initial_path, layout=Layout(width='350px'))
         # Corresponding load buttons
         self.load_line_button = Button(description="Load line", style=widgets.ButtonStyle(button_color='pink'), tooltip='Load a line from b1.json file. The path for b2.json\nwill be generated automatically by replacing b1 with b2.')
         self.load_aperture_button = Button(description="Load aperture", style=widgets.ButtonStyle(button_color='pink'), tooltip='Load aperture data from all_optics_B1.tfs file.\nThe path for B4.tfs will be generated automatically by replacing B1 with B4.')
@@ -267,58 +268,69 @@ class InteractiveTool():
 
         path = self.file_chooser_line.selected
         
-        if path and os.path.exists(str(path).replace('b1', 'b2')):
-            # I add these akward spaced so the printing updates fully
-            print('Loading new line...                                      ', end="\r")
+        if path:
+            _, file_extension = os.path.splitext(path)
+            if file_extension == '.json':
+                if os.path.exists(str(path).replace('b1', 'b2')):
+                    # I add these akward spaced so the printing updates fully
+                    print_and_clear('Loading new line...')
 
-            # Keep envelope and the first element the same
-            if hasattr(self, 'aperture_data'):
-                n = self.aperture_data.n
-                if hasattr(self.aperture_data, 'first_element'): first_element = self.aperture_data.first_element
-                else: first_element = None
-            else: n, first_element = None, None
+                    # Keep envelope and the first element the same
+                    if hasattr(self, 'aperture_data'):
+                        n = self.aperture_data.n
+                        if hasattr(self.aperture_data, 'first_element'): first_element = self.aperture_data.first_element
+                        else: first_element = None
+                    else: n, first_element = None, None
 
-            self.aperture_data = ApertureData(path_b1 = path)
+                    self.aperture_data = ApertureData(path_b1 = path)
 
-            if self.file_chooser_aperture.selected:
-                print('Re-loading aperture data...                                      ', end="\r")
-                self.aperture_data.load_aperture(self.file_chooser_aperture.selected)
+                    if self.file_chooser_aperture.selected:
+                        print_and_clear('Re-loading aperture data...')
+                        self.aperture_data.load_aperture(self.file_chooser_aperture.selected)
 
-            if self.file_chooser_optics.selected:
-                print('Re-loading optics elements...                                      ', end="\r")
-                self.aperture_data.load_elements(self.file_chooser_optics.selected)
+                    if self.file_chooser_optics.selected:
+                        print_and_clear('Re-loading optics elements...')
+                        self.aperture_data.load_elements(self.file_chooser_optics.selected)
 
-            if n: self.aperture_data.envelope(n)
-            if first_element: self.aperture_data.cycle(first_element)
+                    if n: self.aperture_data.envelope(n)
+                    if first_element: self.aperture_data.cycle(first_element)
 
-            self.enable_widgets()
-            self.update_knob_dropdown()
-            self.update_graph()
-
-        else: print('Make sure the path is selected by clicking Select button first.                                      ', end="\r")
+                    self.enable_widgets()
+                    self.update_knob_dropdown()
+                    self.update_graph()
+                else: print_and_clear("Path for beam 2 doesn't exist.") # TODO: add an option for path 2 selection
+            else: print_and_clear('Invalid path, make sure to select .json file.')
+        else: print_and_clear('Make sure the path is selected by clicking Select button first.')
 
     def on_load_aperture_button_clicked(self, b):
 
         path = self.file_chooser_aperture.selected
 
         if path:
-            print('Loading new aperture data...                                      ', end="\r")
-            self.aperture_data.load_aperture(path)
+            _, file_extension = os.path.splitext(path)
+            if file_extension == '.tfs':
+                if os.path.exists(str(path).replace('B1', 'B4')):
+                    print_and_clear('Loading new aperture data...')
+                    self.aperture_data.load_aperture(path)
 
-            self.update_graph()
-
-        else: print('Make sure the path is selected by clicking Select button first.                                      ', end="\r")
+                    self.update_graph()
+                else: print_and_clear("Path for beam 2 doesn't exist.") # TODO: add an option for path 2 selection
+            else: print_and_clear('Invalid path, make sure to select .tfs file.')
+        else: print_and_clear('Make sure the path is selected by clicking Select button first.')
 
     def on_load_optics_button_clicked(self, b):
 
         path = self.file_chooser_optics.selected
 
         if path:
-            print('Loading new optics elements...                                      ', end="\r")
-            self.aperture_data.load_elements(path)
+            _, file_extension = os.path.splitext(path)
+            if file_extension == '.tfs':
+                print_and_clear('Loading new optics elements...')
+                self.aperture_data.load_elements(path)
 
-            self.update_graph()
-        else: print('Make sure the path is selected by clicking Select button first.                                      ', end="\r")
+                self.update_graph()
+            else: print_and_clear('Invalid path, make sure to select .tfs file.')
+        else: print_and_clear('Make sure the path is selected by clicking Select button first.')
 
     def create_time_widgets(self):
         """
@@ -334,11 +346,13 @@ class InteractiveTool():
         # Create date and time input widgets
         self.date_picker = DatePicker(
                 description='Select Date:',
+                value=date.today(),            # Sets the default value to today's date
                 style={'description_width': 'initial'}, # Ensures the description width fits the content
                 layout=Layout(width='300px'))           # Sets the width of the widget
 
         self.time_input = Text(
                 description='Enter Time (HH:MM:SS):',
+                value=datetime.now().strftime('%H:%M:%S'), # Sets the default value to the current time
                 placeholder='10:53:15',                 # Provides a placeholder text for the expected format
                 style={'description_width': 'initial'}, # Ensures the description width fits the content
                 layout=Layout(width='300px'))           # Sets the width of the widget
@@ -347,7 +361,7 @@ class InteractiveTool():
 
         selected_plane = self.plane_dropdown.value
 
-        print('Switching between planes...                                      ', end="\r")
+        print_and_clear('Switching between planes...')
         self.plane = selected_plane
 
         self.update_graph()
@@ -358,7 +372,7 @@ class InteractiveTool():
         """
         # Get the selected envelope size from the widget
         selected_size = self.envelope_input.value
-        print('Setting new envelope size...                                      ', end="\r")
+        print_and_clear('Setting new envelope size...')
         # Update global data with the new envelope size
         self.aperture_data.envelope(selected_size)
         # Update the graph with the new envelope size
@@ -385,13 +399,18 @@ class InteractiveTool():
 
                 # Load BPM data for the specified datetime
                 self.BPM_data.load_data(combined_datetime)
+                
+                # Check if data is available
+                if self.BPM_data.data:
+                    # Update the graph with the new BPM data
+                    self.update_graph()
+                # If data is None
+                else: print_and_clear("BPM data not found for the given time.")
 
-                # Update the graph with the new BPM data
-                self.update_graph()
             except ValueError:
-                print("Invalid time format. Please use HH:MM:SS.                                      ", end="\r")
+                print_and_clear("Invalid time format. Please use HH:MM:SS.")
         else:
-            print("Please select both a date and a time.                                      ", end="\r")
+            print_and_clear("Please select both a date and a time.")
 
     def on_load_cols_button_clicked(self, b):
         """
@@ -415,13 +434,17 @@ class InteractiveTool():
                 # Load collimator data
                 self.collimator_data.load_data(combined_datetime)
 
-                # Update the graph with the new collimator data
-                self.update_graph()
+                if self.collimator_data.colx_b1.isna().all() and self.collimator_data.colx_b2.isna().all() and self.collimator_data.coly_b1.isna().all() and self.collimator_data.coly_b2.isna().all():
+                    # The timber data was empty
+                    print_and_clear("Collimator data not found for the given time.")
+                else:
+                    # Update the graph with the new collimator data
+                    self.update_graph()
 
             except ValueError:
-                print("Invalid time format. Please use HH:MM:SS.                                      ", end="\r")
+                print_and_clear("Invalid time format. Please use HH:MM:SS.")
         else:
-            print("Please select both a date and a time.                                      ", end="\r")
+            print_and_clear("Please select both a date and a time.")
 
     def on_reset_button_clicked(self, b):
         """
@@ -450,11 +473,11 @@ class InteractiveTool():
         """
         # Retrieve the selected element from the widget
         first_element = self.cycle_input.value
-        print(f'Setting {first_element} as the first element...                                      ', end="\r")
+        print_and_clear(f'Setting {first_element} as the first element...')
         # Cycle
         self.aperture_data.cycle(first_element)
         # If invalid input don't update the graph
-        if len(self.aperture_data.tw_b1.loc[self.aperture_data.tw_b1['name'] != first_element]['s'].values)!=0:
+        if len(self.aperture_data.tw_b1.loc[self.aperture_data.tw_b1['name'] == first_element]['s'].values)!=0:
             # Update the figure
             self.update_graph()
 
@@ -505,14 +528,17 @@ class InteractiveTool():
         Apply changes to the knobs and update the graph.
         """
         # Update knobs dictionary based on current values in the knob widgets
-        for knob, widget in self.knob_widgets.items():
-            self.aperture_data.change_knob(knob, widget.value)
+        try:
+            for knob, widget in self.knob_widgets.items():
+                self.aperture_data.change_knob(knob, widget.value)
 
-        # Re-twiss
-        self.aperture_data.twiss()
+            # Re-twiss
+            self.aperture_data.twiss()
+            # Update the figure
+            self.update_graph()
 
-        # Update the figure
-        self.update_graph()
+        except: 
+            print_and_clear('Could not compute twiss. Try again with different knob values.')
 
     def update_knob_box(self):
         """

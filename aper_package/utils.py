@@ -49,3 +49,7 @@ def match_with_twiss(twiss, aper_to_match):
     df_merged = df_merged.reset_index(drop=True)
 
     return df_merged
+
+def print_and_clear(message):
+
+    print(message+'                                                                            ', end="\r")

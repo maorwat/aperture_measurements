@@ -7,8 +7,7 @@ from typing import Any, Dict, Optional
  
 import xtrack as xt
 
-from aper_package.utils import shift_by
-from aper_package.utils import match_with_twiss
+from aper_package.utils import *
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -62,16 +61,10 @@ class ApertureData:
                     the path will be created by replacing b1 with b2
         """
         # If path for beam 2 was not given, construct it by replacing b1 with b2
-        if not path_b2:
-            path_b2 = str(path_b1).replace('b1', 'b2')
-        # If path was given but was selected with select_path_in_SWAN()
-        else:
-            if isinstance(path_b2, list): path_b2=path_b2[0]
+        if not path_b2: path_b2 = str(path_b1).replace('b1', 'b2')
 
-        try:
-            return xt.Line.from_json(path_b1), xt.Line.from_json(path_b2)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"File {path_b1} not found.")
+        return xt.Line.from_json(path_b1), xt.Line.from_json(path_b2)
+
 
     def _define_knobs(self) -> None:
         """
@@ -96,7 +89,7 @@ class ApertureData:
             'current value': knob_values
         })
 
-        self.knobs = self.knobs.sort_values(by='knob').reset_index()
+        self.knobs = self.knobs.sort_values(by='knob').reset_index(drop=True)
 
     def _define_nominal_crossing(self) -> None:
         """
@@ -113,11 +106,11 @@ class ApertureData:
         Compute and process the twiss parameters for both beams.
         """
         # Generate twiss
-        print('Computing twiss for beam 1...                                      ', end="\r")
+        print_and_clear('Computing twiss for beam 1...')
         tw_b1 = self.line_b1.twiss(skip_global_quantities=True).to_pandas()
-        print('Computing twiss for beam 2...                                      ', end="\r")
+        print_and_clear('Computing twiss for beam 2...')
         tw_b2 = self.line_b2.twiss(skip_global_quantities=True, reverse=True).to_pandas()
-        print('Done computing twiss.                                      ', end="\r")
+        print_and_clear('Done computing twiss.')
 
         # Process the twiss DataFrames
         self.tw_b1 = self._process_twiss(tw_b1)
@@ -205,7 +198,7 @@ class ApertureData:
         if len(element_positions) == 0:
             # Don't cycle
             shift = 0
-            print(f"Element '{first_element}' not found in the DataFrame.")
+            print_and_clear(f"Element '{first_element}' not found in the DataFrame.")
         else:
             # Save the first element for the case of retwissing
             self.first_element = first_element
@@ -241,7 +234,7 @@ class ApertureData:
                         try:
                             setattr(self, attr, shift_by(getattr(self, attr), shift, shift_type))
                         except Exception as e:
-                            print(f"Error shifting {attr}: {e}")
+                            print_and_clear(f"Error shifting {attr}: {e}")
 
     def envelope(self, n: float) -> None:
         """
@@ -314,22 +307,18 @@ class ApertureData:
         """
 
         # If path for beam 2 was not given, construct it by replacing b1 with b2
-        if not path_b2:
-            path_b2 = str(path_b1).replace('B1', 'B4')
-        # If path was given but was selected with select_path_in_SWAN()
+        if not path_b2: path_b2 = str(path_b1).replace('B1', 'B4')
 
-        try:
-            # Drop uneeded columns
-            df1 = tfs.read(path_b1)[['S', 'NAME', 'APER_1', 'APER_2']]
-            df2 = tfs.read(path_b2)[['S', 'NAME', 'APER_1', 'APER_2']]
-            # Get rid of undefined values
-            df1 = df1[(df1['APER_1'] < 0.2) & (df1['APER_1'] != 0) & (df1['APER_2'] < 0.2) & (df1['APER_2'] != 0)]
-            df2 = df2[(df2['APER_1'] < 0.2) & (df2['APER_1'] != 0) & (df2['APER_2'] < 0.2) & (df2['APER_2'] != 0)]
-            # Make sure the aperture aligns with twiss data (if cycling was performed)
-            df1 = match_with_twiss(self.tw_b1, df1)
-            df2 = match_with_twiss(self.tw_b2, df2)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"File {path_b1} not found.")
+        # Drop uneeded columns
+        df1 = tfs.read(path_b1)[['S', 'NAME', 'APER_1', 'APER_2']]
+        df2 = tfs.read(path_b2)[['S', 'NAME', 'APER_1', 'APER_2']]
+        # Get rid of undefined values
+        df1 = df1[(df1['APER_1'] < 0.2) & (df1['APER_1'] != 0) & (df1['APER_2'] < 0.2) & (df1['APER_2'] != 0)]
+        df2 = df2[(df2['APER_1'] < 0.2) & (df2['APER_1'] != 0) & (df2['APER_2'] < 0.2) & (df2['APER_2'] != 0)]
+        # Make sure the aperture aligns with twiss data (if cycling was performed)
+        df1 = match_with_twiss(self.tw_b1, df1)
+        df2 = match_with_twiss(self.tw_b2, df2)
+
         return df1.drop_duplicates(subset=['S']), df2.drop_duplicates(subset=['S'])
     
     def load_collimators_from_yaml(self, path: str) -> None:
