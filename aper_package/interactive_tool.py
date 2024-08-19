@@ -7,13 +7,12 @@ from typing import Optional, List, Tuple, Any
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText, DatePicker, Text, Dropdown
-from IPython.display import display, clear_output
+from IPython.display import display
 from ipyfilechooser import FileChooser
 
 from aper_package.figure_data import *
 from aper_package.utils import print_and_clear
-from aper_package.timber_data import BPMData
-from aper_package.timber_data import CollimatorsData
+from aper_package.timber_data import *
 from aper_package.aperture_data import ApertureData
 
 class InteractiveTool():
@@ -58,7 +57,14 @@ class InteractiveTool():
         self.define_widget_layout()
 
     def initialise_knob_controls(self):
+        """
+        Initializes the knob controls for the user interface. 
 
+        This method sets up the necessary containers and widgets to manage knob selections, 
+        including a dropdown for selecting knobs and a box to display the selected knobs. 
+        It handles the initialization based on whether the `aperture_data` attribute exists 
+        and contains valid knob data.
+        """
         # Dictionaries and list to store selected knobs, corresponding widgets, and current widget values
         self.selected_knobs = []
         self.knob_widgets = {}
@@ -102,13 +108,13 @@ class InteractiveTool():
         self.reset_button = Button(description="Reset knobs", style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)'), tooltip='Reset all the knobs to their nominal values.')
         # Button to change envelope size# Create a dropdown to select a knob
         self.envelope_button = Button(description="Apply", style=widgets.ButtonStyle(button_color='pink'), tooltip='Change the size of beam envelope (in units of normalized beam size).')
+        # Button to switch between horizontal and vertical planes
         self.plane_button = Button(description="Switch", style=widgets.ButtonStyle(button_color='pink'), tooltip='Switch between horizontal and vertical planes.')
 
     def create_widgets(self):
         """
         Define and configure widgets for knob selection, cycle start, envelope size, and graph container.
         """
-
         # Create a text widget to specify cycle start
         self.cycle_input = Text(
             value='',                               # Initial value (empty string)
@@ -142,17 +148,41 @@ class InteractiveTool():
             disabled=False)
         
     def create_file_choosers(self):
+        """
+        Initializes file chooser widgets and corresponding load buttons for the user interface.
+
+        This method creates three file chooser widgets for selecting different types of files
+        (line, aperture, and optics) and initializes buttons for loading the selected files.
+        """
 
         # Create filechoosers
         self.file_chooser_line = FileChooser(self.initial_path, layout=Layout(width='350px'))
         self.file_chooser_aperture = FileChooser(self.initial_path, layout=Layout(width='350px'))
         self.file_chooser_optics = FileChooser(self.initial_path, layout=Layout(width='350px'))
-        # Corresponding load buttons
-        self.load_line_button = Button(description="Load line", style=widgets.ButtonStyle(button_color='pink'), tooltip='Load a line from b1.json file. The path for b2.json\nwill be generated automatically by replacing b1 with b2.')
-        self.load_aperture_button = Button(description="Load aperture", style=widgets.ButtonStyle(button_color='pink'), tooltip='Load aperture data from all_optics_B1.tfs file.\nThe path for B4.tfs will be generated automatically by replacing B1 with B4.')
-        self.load_optics_button = Button(description="Load optics", style=widgets.ButtonStyle(button_color='pink'), tooltip='Load MADX_thick all_optics_B1.tfs file to show optics elements above the figure.')   
+        # Initialize corresponding load buttons with descriptions, styles, and tooltips
+        self.load_line_button = Button(
+            description="Load line",
+            style=widgets.ButtonStyle(button_color='pink'),
+            tooltip='Load a line from b1.json file. The path for b2.json\nwill be generated automatically by replacing b1 with b2.'
+        )
+        self.load_aperture_button = Button(
+            description="Load aperture",
+            style=widgets.ButtonStyle(button_color='pink'),
+            tooltip='Load aperture data from all_optics_B1.tfs file.\nThe path for B4.tfs will be generated automatically by replacing B1 with B4.'
+        )
+        self.load_optics_button = Button(
+            description="Load optics",
+            style=widgets.ButtonStyle(button_color='pink'),
+            tooltip='Load MADX_thick all_optics_B1.tfs file to show optics elements above the figure.'
+        )
 
     def setup_event_handlers(self):
+        """
+        Sets up event handlers for various buttons in the user interface.
+
+        This method assigns specific callback functions to the on-click events of 
+        various buttons, enabling interactive functionality within the UI.
+        """
         
         self.add_button.on_click(self.on_add_button_clicked)
         self.remove_button.on_click(self.on_remove_button_clicked)
@@ -166,6 +196,13 @@ class InteractiveTool():
         self.load_optics_button.on_click(self.on_load_optics_button_clicked)
 
     def group_controls_into_rows(self):
+        """
+        Organizes the user interface controls into logical rows for better layout management.
+
+        This method groups various UI controls into rows and organizes them into 
+        different categories: file chooser controls, first row controls, and second row controls.
+        It also initializes a row of timber controls if applicable.
+        """
 
         # Group controls together
         self.file_chooser_controls = [self.file_chooser_line, self.load_line_button, self.file_chooser_aperture, self.load_aperture_button, self.file_chooser_optics, self.load_optics_button]
@@ -175,6 +212,17 @@ class InteractiveTool():
         self.timber_row_controls = self.initialise_timber_data() # If spark was not given this will return a None     
  
     def initialise_timber_data(self):
+        """
+        Initializes timber-related data and UI components if the `spark` attribute is provided.
+
+        This method sets up UI elements and data handlers for interacting with timber data. 
+        If the `spark` attribute is set, it initializes data objects for collimators and BPMs, 
+        creates buttons to load this data, and sets up time selection widgets. It then adds 
+        these UI components to the main widget list and returns the list of timber-related controls.
+
+        Returns:
+            list: List of UI components related to timber data, or None if `spark` is not provided.
+        """
         
         # Only add timber buttons if spark given as an argument
         if self.spark:
@@ -182,10 +230,19 @@ class InteractiveTool():
             self.collimator_data = CollimatorsData(self.spark)
             self.BPM_data = BPMData(self.spark)
             
-            self.load_BPMs_button = Button(description="Load BPMs", style=widgets.ButtonStyle(button_color='pink'), tooltip='Load BPM data from timber for the specified time.')
+            # Create buttons to load BPM and collimator data
+            self.load_BPMs_button = Button(
+                description="Load BPMs",
+                style=widgets.ButtonStyle(button_color='pink'),
+                tooltip='Load BPM data from timber for the specified time.'
+            )
             self.load_BPMs_button.on_click(self.on_load_BPMs_button_clicked)
 
-            self.load_cols_button = Button(description="Load collimators", style=widgets.ButtonStyle(button_color='pink'), tooltip='Load collimator data from timber for the specified time.')
+            self.load_cols_button = Button(
+                description="Load collimators",
+                style=widgets.ButtonStyle(button_color='pink'),
+                tooltip='Load collimator data from timber for the specified time.'
+            )
             self.load_cols_button.on_click(self.on_load_cols_button_clicked)
 
             # Time selection widgets
@@ -202,10 +259,6 @@ class InteractiveTool():
     def define_widget_layout(self):
         """
         Define and arrange the layout of the widgets.
-
-        Parameters:
-            first_row_controls: List of widgets to be arranged in the first row.
-            second_row_controls: List of widgets to be arranged in the second row.
         """
 
         # Create layout for the first row of controls
@@ -265,72 +318,138 @@ class InteractiveTool():
                 border='solid 2px #ddd'))       # Border around the VBox
         
     def on_load_line_button_clicked(self, b):
+        """
+        Handles the event when the 'Load line' button is clicked.
 
-        path = self.file_chooser_line.selected
-        
-        if path:
-            _, file_extension = os.path.splitext(path)
-            if file_extension == '.json':
-                if os.path.exists(str(path).replace('b1', 'b2')):
-                    # I add these akward spaced so the printing updates fully
-                    print_and_clear('Loading new line...')
+        Validates the selected JSON file path, checks if the corresponding 'b2' file exists,
+        loads the new line data, and updates associated aperture and optics data if available.
+        Updates the UI components, including the knob dropdown and graph.
+        """
 
-                    # Keep envelope and the first element the same
-                    if hasattr(self, 'aperture_data'):
-                        n = self.aperture_data.n
-                        if hasattr(self.aperture_data, 'first_element'): first_element = self.aperture_data.first_element
-                        else: first_element = None
-                    else: n, first_element = None, None
-
-                    self.aperture_data = ApertureData(path_b1 = path)
-
-                    if self.file_chooser_aperture.selected:
-                        print_and_clear('Re-loading aperture data...')
-                        self.aperture_data.load_aperture(self.file_chooser_aperture.selected)
-
-                    if self.file_chooser_optics.selected:
-                        print_and_clear('Re-loading optics elements...')
-                        self.aperture_data.load_elements(self.file_chooser_optics.selected)
-
-                    if n: self.aperture_data.envelope(n)
-                    if first_element: self.aperture_data.cycle(first_element)
-
-                    self.enable_widgets()
-                    self.update_knob_dropdown()
-                    self.update_graph()
-                else: print_and_clear("Path for beam 2 doesn't exist.") # TODO: add an option for path 2 selection
-            else: print_and_clear('Invalid path, make sure to select .json file.')
-        else: print_and_clear('Make sure the path is selected by clicking Select button first.')
+        self._handle_load_button_click(
+            file_chooser=self.file_chooser_line,
+            expected_extension='.json',
+            path_replacement={'b1': 'b2'},
+            load_function=self._load_line_data
+        )
 
     def on_load_aperture_button_clicked(self, b):
+        """
+        Handles the event when the 'Load aperture' button is clicked.
 
-        path = self.file_chooser_aperture.selected
+        Validates the selected .tfs file path, checks if the corresponding 'B4' file exists,
+        and loads the aperture data. Updates the graph to reflect the new aperture data.
+        """
 
-        if path:
-            _, file_extension = os.path.splitext(path)
-            if file_extension == '.tfs':
-                if os.path.exists(str(path).replace('B1', 'B4')):
-                    print_and_clear('Loading new aperture data...')
-                    self.aperture_data.load_aperture(path)
-
-                    self.update_graph()
-                else: print_and_clear("Path for beam 2 doesn't exist.") # TODO: add an option for path 2 selection
-            else: print_and_clear('Invalid path, make sure to select .tfs file.')
-        else: print_and_clear('Make sure the path is selected by clicking Select button first.')
+        self._handle_load_button_click(
+            file_chooser=self.file_chooser_aperture,
+            expected_extension='.tfs',
+            path_replacement={'B1': 'B4'},
+            load_function=self._load_aperture_data
+        )
 
     def on_load_optics_button_clicked(self, b):
+        """
+        Handles the event when the 'Load optics' button is clicked.
 
-        path = self.file_chooser_optics.selected
+        Validates the selected .tfs file path, loads the optics elements, and updates the graph
+        to reflect the new optics data.
+        """
 
-        if path:
-            _, file_extension = os.path.splitext(path)
-            if file_extension == '.tfs':
-                print_and_clear('Loading new optics elements...')
-                self.aperture_data.load_elements(path)
+        self._handle_load_button_click(
+            file_chooser=self.file_chooser_optics,
+            expected_extension='.tfs',
+            path_replacement=None,
+            load_function=self._load_optics_data
+        )
 
-                self.update_graph()
-            else: print_and_clear('Invalid path, make sure to select .tfs file.')
-        else: print_and_clear('Make sure the path is selected by clicking Select button first.')
+    def _handle_load_button_click(self, file_chooser, expected_extension, path_replacement, load_function):
+        """
+        Handles common file validation and loading logic for various buttons.
+
+        Args:
+            file_chooser (FileChooser): The file chooser widget used to select the file.
+            expected_extension (str): The expected file extension (e.g., '.json', '.tfs').
+            path_replacement (dict or None): Dictionary for path replacement (e.g., {'b1': 'b2'}). If None, no replacement is done.
+            load_function (function): The function to call to load the data.
+        """
+        path = file_chooser.selected
+
+        if not path:
+            print_and_clear('Please select a file by clicking the Select button.')
+            return
+
+        _, actual_extension = os.path.splitext(path)
+        if actual_extension != expected_extension:
+            print_and_clear(f'Invalid file type. Please select a {expected_extension} file.')
+            return
+
+        if path_replacement:
+            path_to_check = str(path)
+            for old, new in path_replacement.items():
+                path_to_check = path_to_check.replace(old, new)
+            if not os.path.exists(path_to_check):
+                print_and_clear(f"Path for the corresponding file doesn't exist.")  # TODO: Add an option for path selection
+                return
+
+        print_and_clear(f'Loading new {expected_extension[1:].upper()} data...')
+        load_function(path)
+        self.update_graph()
+
+    def _load_line_data(self, path):
+        """
+        Loads line data and re-loads associated aperture and optics data if available.
+
+        Args:
+            path (str): The path to the line data file.
+        """
+        # Preserve previous envelope and first element data if available
+        n, first_element = None, None
+        if hasattr(self, 'aperture_data'):
+            n = self.aperture_data.n
+            first_element = getattr(self.aperture_data, 'first_element', None)
+
+        # Load new aperture data
+        self.aperture_data = ApertureData(path_b1=path)
+
+        # Re-load aperture and optics data if selected
+        if self.file_chooser_aperture.selected:
+            print_and_clear('Re-loading aperture data...')
+            self.aperture_data.load_aperture(self.file_chooser_aperture.selected)
+
+        if self.file_chooser_optics.selected:
+            print_and_clear('Re-loading optics elements...')
+            self.aperture_data.load_elements(self.file_chooser_optics.selected)
+
+        # Restore previous envelope and cycle settings
+        if n:
+            self.aperture_data.envelope(n)
+        if first_element:
+            self.aperture_data.cycle(first_element)
+
+        # Update UI components
+        self.enable_widgets()
+        self.update_knob_dropdown()
+
+    def _load_aperture_data(self, path):
+        """
+        Loads aperture data from the selected file.
+
+        Args:
+            path (str): The path to the aperture data file.
+        """
+        self.aperture_data.load_aperture(path)
+        self.update_graph()
+
+    def _load_optics_data(self, path):
+        """
+        Loads optics elements from the selected file.
+
+        Args:
+            path (str): The path to the optics data file.
+        """
+        self.aperture_data.load_elements(path)
+        self.update_graph()
 
     def create_time_widgets(self):
         """
@@ -358,6 +477,12 @@ class InteractiveTool():
                 layout=Layout(width='300px'))           # Sets the width of the widget
      
     def on_plane_button_clicked(self, b):
+        """
+        Handles the event when the 'Plane' button is clicked.
+
+        This method updates the current plane selection based on the value from the plane dropdown,
+        and updates the graph to reflect the change.
+        """
 
         selected_plane = self.plane_dropdown.value
 
@@ -368,11 +493,14 @@ class InteractiveTool():
 
     def on_envelope_button_clicked(self, b):
         """
-        Handle the event when the envelope button is clicked. Update the global envelope size and refresh the graph.
+        Handles the event when the 'Envelope' button is clicked.
+
+        This method updates the envelope size based on the value from the envelope input widget,
+         updates the global envelope size in the aperture data, and refreshes the graph to reflect the changes.
         """
         # Get the selected envelope size from the widget
         selected_size = self.envelope_input.value
-        print_and_clear('Setting new envelope size...')
+        print_and_clear(f'Setting envelope size to {selected_size}...')
         # Update global data with the new envelope size
         self.aperture_data.envelope(selected_size)
         # Update the graph with the new envelope size
@@ -410,7 +538,7 @@ class InteractiveTool():
             except ValueError:
                 print_and_clear("Invalid time format. Please use HH:MM:SS.")
         else:
-            print_and_clear("Please select both a date and a time.")
+            print_and_clear("Select both a date and a time.")
 
     def on_load_cols_button_clicked(self, b):
         """
@@ -434,7 +562,7 @@ class InteractiveTool():
                 # Load collimator data
                 self.collimator_data.load_data(combined_datetime)
 
-                if self.collimator_data.colx_b1.isna().all() and self.collimator_data.colx_b2.isna().all() and self.collimator_data.coly_b1.isna().all() and self.collimator_data.coly_b2.isna().all():
+                if all(df.empty for df in [self.collimator_data.colx_b1, self.collimator_data.colx_b2, self.collimator_data.coly_b1, self.collimator_data.coly_b2]):
                     # The timber data was empty
                     print_and_clear("Collimator data not found for the given time.")
                 else:
@@ -444,7 +572,7 @@ class InteractiveTool():
             except ValueError:
                 print_and_clear("Invalid time format. Please use HH:MM:SS.")
         else:
-            print_and_clear("Please select both a date and a time.")
+            print_and_clear("Select both a date and a time.")
 
     def on_reset_button_clicked(self, b):
         """
@@ -740,20 +868,19 @@ class InteractiveTool():
             visibility_b2: Visibility settings for beam 2.
         """
         # Set layout
-        self.fig.update_layout(height=self.height, width=self.width, showlegend=False, xaxis=dict(tickformat=','), yaxis=dict(tickformat=','), plot_bgcolor='white')
+        self.fig.update_layout(height=self.height, width=self.width, showlegend=False, plot_bgcolor='white')
 
         # Change x limits and labels
-        self.fig.update_xaxes(title_text="s [m]", row=self.row, col=self.col)
+        self.fig.update_xaxes(title_text="s [m]", tickformat=',', row=self.row, col=self.col)
 
         # Change y limits and labels
         if self.plane == 'horizontal': title = 'x [m]'
         elif self.plane == 'vertical': title = 'y [m]'
 
-        self.fig.update_yaxes(title_text=title, range = [-0.05, 0.05], row=self.row, col=self.col)
+        self.fig.update_yaxes(title_text=title, tickformat=',', range = [-0.05, 0.05], row=self.row, col=self.col)
 
         if hasattr(self, 'aperture_data'): 
-            self.fig.update_layout(
-                                    updatemenus=[
+            self.fig.update_layout(updatemenus=[
                                         dict(
                                             type="buttons",
                                             direction="right",
