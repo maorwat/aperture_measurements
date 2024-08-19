@@ -50,8 +50,8 @@ class ApertureData:
 
         # Keep the nominal crossing seperately for calculations
         self._define_nominal_crossing()
-        self._distance_to_nominal('h')
-        self._distance_to_nominal('v')
+        self._distance_to_nominal('horizontal')
+        self._distance_to_nominal('vertical')
 
     def _load_lines_data(self, path_b1: str, path_b2: str) -> None:
         """Load lines data from a JSON file.
@@ -61,8 +61,6 @@ class ApertureData:
             path_b2: Path to the line JSON file for beam 2, if not given,
                     the path will be created by replacing b1 with b2
         """
-        # If path was selected using select_path_in_SWAN() it will be in a list
-        if isinstance(path_b1, list): path_b1=path_b1[0]
         # If path for beam 2 was not given, construct it by replacing b1 with b2
         if not path_b2:
             path_b2 = str(path_b1).replace('b1', 'b2')
@@ -138,8 +136,8 @@ class ApertureData:
 
         # If retwissing, also calculate distance to nominal orbit
         if hasattr(self, 'nom_b1'):
-            self._distance_to_nominal('h')
-            self._distance_to_nominal('v')
+            self._distance_to_nominal('horizontal')
+            self._distance_to_nominal('vertical')
 
     def _process_twiss(self, twiss_df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -162,14 +160,12 @@ class ApertureData:
         Calculates the distance to nominal positions for the specified plane (horizontal or vertical).
 
         Parameters:
-            plane: The plane for which to calculate the distances ('h' for horizontal, 'v' for vertical).
+            plane: The plane for which to calculate the distances.
         """
-        if plane not in {'h', 'v'}:
-            raise ValueError("The 'plane' parameter must be 'h' for horizontal or 'v' for vertical.")
 
-        if plane == 'h': 
+        if plane == 'horizontal': 
             up, down, nom, from_nom_to_top, from_nom_to_bottom = 'x_up', 'x_down', 'x', 'x_from_nom_to_top', 'x_from_nom_to_bottom'
-        elif plane == 'v': 
+        elif plane == 'vertical': 
             up, down, nom, from_nom_to_top, from_nom_to_bottom = 'y_up', 'y_down', 'y', 'y_from_nom_to_top', 'y_from_nom_to_bottom'
 
         # Ensure tw_b1 is not a slice
@@ -317,14 +313,10 @@ class ApertureData:
             Processeed aperture DataFrames for beams 1 and 2, respectively.
         """
 
-        # If path was selected using select_path_in_SWAN() it will be in a list
-        if isinstance(path_b1, list): path_b1=path_b1[0]
         # If path for beam 2 was not given, construct it by replacing b1 with b2
         if not path_b2:
             path_b2 = str(path_b1).replace('B1', 'B4')
         # If path was given but was selected with select_path_in_SWAN()
-        else:
-            if isinstance(path_b2, list): path_b2=path_b2[0]
 
         try:
             # Drop uneeded columns
@@ -349,16 +341,15 @@ class ApertureData:
         """
 
         # Load the file
-        if isinstance(path, list): path=path[0]
         with open(path, 'r') as file:
             f = yaml.safe_load(file)
 
         # Create the DataFrames
-        self.colx_b1 = self._get_col_df_from_yaml(f, 0, 'b1', 'h')
-        self.colx_b2 = self._get_col_df_from_yaml(f, 0, 'b2', 'h')
+        self.colx_b1 = self._get_col_df_from_yaml(f, 0, 'b1', 'horizontal')
+        self.colx_b2 = self._get_col_df_from_yaml(f, 0, 'b2', 'horizontal')
 
-        self.coly_b1 = self._get_col_df_from_yaml(f, 90, 'b1', 'v')
-        self.coly_b2 = self._get_col_df_from_yaml(f, 90, 'b2', 'v')
+        self.coly_b1 = self._get_col_df_from_yaml(f, 90, 'b1', 'vertical')
+        self.coly_b2 = self._get_col_df_from_yaml(f, 90, 'b2', 'vertical')
 
     def _get_col_df_from_yaml(self, f: Dict[str, Any], angle: float, beam: str, plane: str) -> pd.DataFrame:
         """
@@ -377,18 +368,11 @@ class ApertureData:
             ValueError: If the beam or plane is not valid.
         """
 
-        if beam not in {'b1', 'b2'}:
-            raise ValueError("The 'beam' parameter must be 'b1' or 'b2'.")
-    
-        if plane not in {'h', 'v'}:
-            raise ValueError("The 'plane' parameter must be 'h' for horizontal or 'v' for vertical.")
-
-
         if beam == 'b1': twiss_data=self.tw_b1
         elif beam == 'b2': twiss_data=self.tw_b2
 
-        if plane == 'h': sigma_key, x_key='sigma_x', 'x'
-        if plane == 'v': sigma_key, x_key='sigma_y', 'y'
+        if plane == 'horizontal': sigma_key, x_key='sigma_x', 'x'
+        if plane == 'vertical': sigma_key, x_key='sigma_y', 'y'
 
         # Create a pandas data frame with only gap and angle
         col = pd.DataFrame(f['collimators'][beam]).loc[['gap', 'angle']].T
@@ -413,8 +397,6 @@ class ApertureData:
             path : The path to the machine components TFS file. If None, a default path is used.
 
         """
-        if isinstance(path, list): path=path[0]
-
         # Load the file
         df = tfs.read(path)
 

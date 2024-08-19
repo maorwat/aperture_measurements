@@ -49,52 +49,66 @@ def plot_machine_components(data: object) -> Tuple[np.ndarray, List[go.Scatter]]
     objects = ["SBEND", "COLLIMATOR", "SEXTUPOLE", "RBEND", "QUADRUPOLE"]
     colors = ['lightblue', 'black', 'hotpink', 'green', 'red']
 
-    # Array to store visibility of the elements
-    visibility_arr = np.array([], dtype=bool)
-
     # Dictionary to store combined data for each object type
-    combined_traces = {obj: {'x': [], 'y': [], 'name': obj, 'color': colors[n]} for n, obj in enumerate(objects)}
+    combined_traces = {obj: {'x': [], 'y': [], 'name': []} for obj in objects}
+    centers = {obj: {'x': [], 'y': [], 'name': []} for obj in objects}
 
     # Iterate over all object types
-    for n, obj in enumerate(objects):
+    for obj in objects:
         obj_df = data.elements[data.elements['KEYWORD'] == obj]
-        
-        # Collect x and y coordinates for the current object type
-        x_coords = []
-        y_coords = []
 
         for i in range(obj_df.shape[0]):
-            x0, x1 = obj_df.iloc[i]['S']-obj_df.iloc[i]['L']/2, obj_df.iloc[i]['S']+obj_df.iloc[i]['L']/2
+            # Calculate x-coordinates
+            x0 = obj_df.iloc[i]['S'] - obj_df.iloc[i]['L'] / 2
+            x1 = obj_df.iloc[i]['S'] + obj_df.iloc[i]['L'] / 2
+
+            # Calculate y-coordinates
             if obj == 'QUADRUPOLE':
                 y0, y1 = 0, np.sign(obj_df.iloc[i]['K1L']).astype(int)
+                if y0 == y1:  # Skip if K1L is 0
+                    continue
             else:
                 y0, y1 = -0.5, 0.5
 
-            # Append coordinates to the respective object type
-            x_coords.extend([x0, x0, x1, x1, None])  # None to separate shapes
-            y_coords.extend([y0, y1, y1, y0, None])
-
-        # Add combined coordinates to the dictionary
-        combined_traces[obj]['x'].append(x_coords)
-        combined_traces[obj]['y'].append(y_coords)
+            # Append coordinates, separated by `None`
+            combined_traces[obj]['x'].extend([x0, x0, x1, x1, None])
+            combined_traces[obj]['y'].extend([y0, y1, y1, y0, None])
+            # Calculate the center of the polygon
+            x_center = np.mean([x0, x1])
+            y_center = np.mean([y0, y1])
+            centers[obj]['x'].append(x_center)
+            centers[obj]['y'].append(y_center)
+            centers[obj]['name'].append(obj_df.iloc[i]['NAME'])
 
     # Convert combined traces to Plotly Scatter objects
     traces = []
     for obj in objects:
         trace_data = combined_traces[obj]
         trace = go.Scatter(
-            x=np.concatenate(trace_data['x']),
-            y=np.concatenate(trace_data['y']),
+            x=trace_data['x'],
+            y=trace_data['y'],
             fill='toself',
             mode='lines',
-            fillcolor=trace_data['color'],
-            line=dict(color=trace_data['color']),
-            name=obj
+            showlegend=False,
+            hoverinfo='skip',
+            fillcolor=colors[objects.index(obj)],
+            line=dict(color=colors[objects.index(obj)])
         )
         traces.append(trace)
 
-    # Append to always show the elements
-    visibility_arr = np.append(visibility_arr, np.full(len(objects), True))
+        # Add a trace for the names in the middle of the rectangles
+        center_trace = go.Scatter(
+            x=centers[obj]['x'],
+            y=centers[obj]['y'],
+            mode='none',
+            text=centers[obj]['name'],
+            showlegend=False,
+            hoverinfo='text'
+        )
+        traces.append(center_trace)
+
+    # Visibility flags for all objects
+    visibility_arr = np.full(len(objects) * 2, True)
 
     return visibility_arr, traces
 
@@ -135,36 +149,86 @@ def plot_collimators(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scat
 
     Parameters:
         data: An object containing collimator data with attributes `colx_b1`, `colx_b2`, `coly_b1`, `coly_b2`.
-        plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
+        plane: A string indicating the plane ('horizontal' for horizontal, 'vertical' for vertical).
 
     Returns:
         Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and the list of Plotly scatter traces.
     """
     # Select the appropriate DataFrames based on the plane
-    if plane == 'horizontal': df_b1, df_b2 = data.colx_b1, data.colx_b2
-    elif plane == 'vertical': df_b1, df_b2 = data.coly_b1, data.coly_b2
+    if plane == 'horizontal':
+        df_b1, df_b2 = data.colx_b1, data.colx_b2
+    elif plane == 'vertical':
+        df_b1, df_b2 = data.coly_b1, data.coly_b2
 
-    # Create empty lists for traces
-    collimators = []
+    # Initialize lists for combined coordinates for Beam 1 and Beam 2
+    combined_traces = {
+        'beam1': {'x': [], 'y': [], 'names': [], 'centers_x': [], 'centers_y': []},
+        'beam2': {'x': [], 'y': [], 'names': [], 'centers_x': [], 'centers_y': []}
+    }
 
-    # Plot
-    for df, vis in zip([df_b1, df_b2], [True, False]):
-
+    # Function to append collimator data to the combined traces
+    def add_collimator_traces(df, beam_key):
         for i in range(df.shape[0]):
-            x0, y0b, y0t, x1, y1 = df.s.iloc[i] - 0.5, df.bottom_gap_col.iloc[i], df.top_gap_col.iloc[i], df.s.iloc[i] + 0.5, 0.1
+            x0 = df.s.iloc[i] - 0.5
+            x1 = df.s.iloc[i] + 0.5
+            y0t = df.top_gap_col.iloc[i]
+            y0b = df.bottom_gap_col.iloc[i]
+            y1 = 0.1
 
-            top_col = go.Scatter(x=[x0, x0, x1, x1], y=[y0t, y1, y1, y0t], fill="toself", mode='lines',
-                            fillcolor='black', line=dict(color='black'), name=df.name.iloc[i], visible=vis)
-            bottom_col = go.Scatter(x=[x0, x0, x1, x1], y=[y0b, -y1, -y1, y0b], fill="toself", mode='lines',
-                            fillcolor='black', line=dict(color='black'), name=df.name.iloc[i], visible=vis)
-            
-            collimators.append(top_col)
-            collimators.append(bottom_col)
-        
-    # Create visibility array: show only Beam 1 collimators by default
-    visibility_arr_b1 = np.concatenate((np.full(df_b1.shape[0]*2, True), np.full(df_b2.shape[0]*2, False)))
+            # Top and bottom collimator combined in the same trace
+            combined_traces[beam_key]['x'].extend([x0, x0, x1, x1, None, x0, x0, x1, x1, None])
+            combined_traces[beam_key]['y'].extend([y0t, y1, y1, y0t, None, y0b, -y1, -y1, y0b, None])
 
-    return visibility_arr_b1, collimators
+            # Calculate the center of the collimator's filled area
+            x_center = np.mean([x0, x1])
+            y_center_top = np.mean([y0t, 0.05])
+            y_center_bottom = np.mean([y0b, -0.05])
+            combined_traces[beam_key]['centers_x'].append(x_center)
+            combined_traces[beam_key]['centers_x'].append(x_center)
+            combined_traces[beam_key]['centers_y'].append(y_center_top)
+            combined_traces[beam_key]['centers_y'].append(y_center_bottom)
+            # Use the name from the DataFrame
+            combined_traces[beam_key]['names'].append(df.name.iloc[i])
+            combined_traces[beam_key]['names'].append(df.name.iloc[i])
+
+    # Add data for both beams
+    add_collimator_traces(df_b1, 'beam1')
+    add_collimator_traces(df_b2, 'beam2')
+
+    # Create traces for the collimators
+    collimators = []
+    for beam_key in combined_traces:
+        trace_data = combined_traces[beam_key]
+        # Trace for filled areas
+        collimator_trace = go.Scatter(
+            x=trace_data['x'],
+            y=trace_data['y'],
+            fill="toself",
+            mode='lines',
+            fillcolor='black',
+            hoverinfo='skip',
+            showlegend=False,
+            line=dict(color='black'),
+            visible=True if beam_key == 'beam1' else False
+        )
+        collimators.append(collimator_trace)
+
+        # Trace for names in the middle of the collimators
+        center_trace = go.Scatter(
+            x=trace_data['centers_x'],
+            y=trace_data['centers_y'],
+            mode='none',
+            text=trace_data['names'],
+            showlegend=False,
+            hoverinfo='text',
+            visible=True if beam_key == 'beam1' else False
+        )
+        collimators.append(center_trace)
+
+    # Visibility array: show only Beam 1 collimators by default
+    visibility_arr = np.array([True, True, False, False])
+
+    return visibility_arr, collimators
 
 def plot_envelopes(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
     """
@@ -180,9 +244,9 @@ def plot_envelopes(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatte
 
     # Define hover template with customdata
     hover_template = ("s: %{x} [m]<br>"
-                            "x: %{y} [m]<br>"
-                            "element: %{text}<br>"
-                            "distance from nominal: %{customdata} [mm]")
+                        "x: %{y} [m]<br>"
+                        "element: %{text}<br>"
+                        "distance from nominal: %{customdata} [mm]")
 
     if plane == 'horizontal':
 

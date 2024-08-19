@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import pandas as pd
 from datetime import datetime
 from typing import Optional, List, Tuple, Any
@@ -18,6 +19,7 @@ class InteractiveTool():
     
     def __init__(self,
                  line_b1_path: Optional[str] = None,
+                 line_b2_path: Optional[str] = None,
                  initial_path: Optional[str] = '/eos/project-c/collimation-team/machine_configurations/',
                  spark: Optional[Any] = None, 
                  plane: Optional[str] = 'horizontal',
@@ -34,7 +36,8 @@ class InteractiveTool():
         """
         # If line was given load
         if line_b1_path:
-            self.aperture_data = ApertureData(line_b1_path)
+            if not line_b2_path and os.path.exists(str(line_b1_path).replace('b1', 'b2')): self.aperture_data = ApertureData(line_b1_path)
+            elif not line_b2_path and not os.path.exists(str(line_b1_path).replace('b1', 'b2')): print('Path for beam 2 not found. You can either provide it as an argument line_b2_path\nor load interactively from the graph')
 
         self.additional_traces = additional_traces
         self.initial_path = initial_path
@@ -93,11 +96,11 @@ class InteractiveTool():
         # Button to apply selection and update graph
         self.apply_button = Button(description="Apply", style=widgets.ButtonStyle(button_color='pink'), tooltip='Re-twiss the data with knob values given below.')
         # Button to shift the graph
-        self.cycle_button = Button(description="Cycle", style=widgets.ButtonStyle(button_color='pink'), tooltip='Shift the graph to start at a different element for better visualisation.')
+        self.cycle_button = Button(description="Cycle", style=widgets.ButtonStyle(button_color='pink'), tooltip='Shift the figure to start at a different element for better visualisation.')
         # Button to reset knobs    
-        self.reset_button = Button(description="Reset knobs", style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)'), tooltip='Reset all the knobs to its nominal values.')
+        self.reset_button = Button(description="Reset knobs", style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)'), tooltip='Reset all the knobs to their nominal values.')
         # Button to change envelope size# Create a dropdown to select a knob
-        self.envelope_button = Button(description="Apply", style=widgets.ButtonStyle(button_color='pink'), tooltip='Change the beam envelope.')
+        self.envelope_button = Button(description="Apply", style=widgets.ButtonStyle(button_color='pink'), tooltip='Change the size of beam envelope (in units of normalized beam size).')
         self.plane_button = Button(description="Switch", style=widgets.ButtonStyle(button_color='pink'), tooltip='Switch between horizontal and vertical planes.')
 
     def create_widgets(self):
@@ -144,7 +147,7 @@ class InteractiveTool():
         self.file_chooser_aperture = FileChooser(self.initial_path)
         self.file_chooser_optics = FileChooser(self.initial_path)
         # Corresponding load buttons
-        self.load_line_button = Button(description="Load line", style=widgets.ButtonStyle(button_color='pink'), tooltip='Load a line from b1.json file.\nThe path for b2.json will be generated automatically by replacing b1 with b2.')
+        self.load_line_button = Button(description="Load line", style=widgets.ButtonStyle(button_color='pink'), tooltip='Load a line from b1.json file. The path for b2.json\nwill be generated automatically by replacing b1 with b2.')
         self.load_aperture_button = Button(description="Load aperture", style=widgets.ButtonStyle(button_color='pink'), tooltip='Load aperture data from all_optics_B1.tfs file.\nThe path for B4.tfs will be generated automatically by replacing B1 with B4.')
         self.load_optics_button = Button(description="Load optics", style=widgets.ButtonStyle(button_color='pink'), tooltip='Load MADX_thick all_optics_B1.tfs file to show optics elements above the figure.')   
 
@@ -264,7 +267,7 @@ class InteractiveTool():
 
         path = self.file_chooser_line.selected
         
-        if path:
+        if path and os.path.exists(str(path).replace('b1', 'b2')):
             # I add these akward spaced so the printing updates fully
             print('Loading new line...                                      ', end="\r")
 
@@ -532,12 +535,16 @@ class InteractiveTool():
 
     def disable_widgets(self):
 
-        for i in self.widgets[2:]:
+        filtered_buttons = [widget for widget in self.widgets if isinstance(widget, Button)]
+
+        for i in filtered_buttons[1:]:
             i.disabled = True
     
     def enable_widgets(self):
 
-        for i in self.widgets:
+        filtered_buttons = [widget for widget in self.widgets if isinstance(widget, Button)]
+
+        for i in filtered_buttons:
             i.disabled = False
 
     def update_graph(self):
