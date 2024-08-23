@@ -39,10 +39,14 @@ class ApertureData:
 
         # Define gamma and length of the accelerator using loaded line
         self.gamma = self.line_b1.particle_ref.to_pandas()['gamma0'][0]
-        self.length = self.line_b1.get_s_elements()[-1]
+        self.length = self.line_b1.get_length()
 
         # Find knobs
         self._define_knobs()
+
+        # Turn off all multipoles with order > 2 and relax the aperture to enable higher crossing angles
+        self.turn_off_multipoles()
+        self.relax_aperture()
 
         # Twiss
         self.twiss()
@@ -64,7 +68,6 @@ class ApertureData:
         if not path_b2: path_b2 = str(path_b1).replace('b1', 'b2')
 
         return xt.Line.from_json(path_b1), xt.Line.from_json(path_b2)
-
 
     def _define_knobs(self) -> None:
         """
@@ -166,10 +169,10 @@ class ApertureData:
         self.tw_b2 = self.tw_b2.copy()
 
         self.tw_b1.loc[:, from_nom_to_top] = (self.tw_b1[up] - self.nom_b1[nom])*1000
-        self.tw_b1.loc[:, from_nom_to_bottom] = (self.tw_b1[down] - self.nom_b1[nom])*1000
+        self.tw_b1.loc[:, from_nom_to_bottom] = abs(self.tw_b1[down] - self.nom_b1[nom])*1000
 
         self.tw_b2.loc[:, from_nom_to_top] = (self.tw_b2[up] - self.nom_b2[nom])*1000
-        self.tw_b2.loc[:, from_nom_to_bottom] = (self.tw_b2[down] - self.nom_b2[nom])*1000
+        self.tw_b2.loc[:, from_nom_to_bottom] = abs(self.tw_b2[down] - self.nom_b2[nom])*1000
 
     def _define_sigma(self) -> None:
         """
@@ -206,6 +209,46 @@ class ApertureData:
             shift = -element_positions[0]
         
         return shift
+
+    def turn_off_multipoles(self):
+
+        # TODO: is there more efficient way to do that?
+        for i, n in enumerate(self.line_b1.elements):
+            if isinstance(n, xt.Multipole) and n.order>2:
+                n.knl.fill(0)
+                n.ksl.fill(0)
+
+        for i, n in enumerate(self.line_b2.elements):
+            if isinstance(n, xt.Multipole) and n.order>2:
+                n.knl.fill(0)
+                n.ksl.fill(0)
+
+    def relax_aperture(self):
+
+        # TODO: make it better 
+        for i, n in enumerate(self.line_b1.elements):
+            if isinstance(n, xt.LimitEllipse):
+                n.a_squ = 1
+                n.b_squ = 1
+                n.a_b_squ = 1
+            if isinstance(n, xt.LimitRectEllipse):
+                n.a_squ = 1
+                n.b_squ = 1
+                n.a_b_squ = 1
+                n.max_x = 1
+                n.max_y = 1
+
+        for i, n in enumerate(self.line_b2.elements):
+            if isinstance(n, xt.LimitEllipse):
+                n.a_squ = 1
+                n.b_squ = 1
+                n.a_b_squ = 1
+            if isinstance(n, xt.LimitRectEllipse):
+                n.a_squ = 1
+                n.b_squ = 1
+                n.a_b_squ = 1
+                n.max_x = 1
+                n.max_y = 1
 
     def cycle(self, element: str) -> None:
         """
@@ -257,6 +300,10 @@ class ApertureData:
             df['x_down'] = df['x'] - n * df['sigma_x']
             df['y_up'] = df['y'] + n * df['sigma_y']
             df['y_down'] = df['y'] - n * df['sigma_y']
+
+        if hasattr(self, 'nom_b1'):
+            self._distance_to_nominal('horizontal')
+            self._distance_to_nominal('vertical')
 
     def change_knob(self, knob: str, value: float) -> None:
         """

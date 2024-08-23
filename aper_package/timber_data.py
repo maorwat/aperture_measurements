@@ -3,10 +3,11 @@ import numpy as np
 import yaml
 import tfs
 
-from typing import Any, Dict, Optional, Union, List
+from typing import Any, Dict, Optional, Union, List, Tuple
 
 import pytimber
 from datetime import datetime, timedelta
+from scipy.optimize import least_squares
 
 from aper_package.utils import shift_by, print_and_clear
 
@@ -56,8 +57,8 @@ class BPMData:
             # Create a DataFrame with the extracted data
             self.data = pd.DataFrame({
                 'name': bpm_names,
-                'x': bpm_readings_h,
-                'y': bpm_readings_v
+                'x': bpm_readings_h/1e6, # Change units to metres to stay consistent
+                'y': bpm_readings_v/1e6
             })
 
         except KeyError: self.data = None
@@ -78,6 +79,72 @@ class BPMData:
         # Merge BPM data with Twiss data to find positions
         self.b1 = pd.merge(self.data, twiss.tw_b1[['name', 's']], on='name')
         self.b2 = pd.merge(self.data, twiss.tw_b2[['name', 's']], on='name')
+
+    def least_squares_fit(self,
+                        aper_data: object,
+                        init_angle: float,
+                        knob: str,
+                        plane: str,
+                        angle_range: Optional[Tuple[float, float]] = (-500, 500), 
+                        s_range: Optional[Tuple[float, float]] = None):
+        """
+        Data needs to be loaded using self.load befor performing the fit.
+        """
+
+        # Remove the outliers aroundd ip1 and ip5
+        self.data = self.data[~self.data['name'].str.contains('bpmwf')]
+
+        result = least_squares(self._objective, x0=[init_angle], bounds=angle_range, args=(aper_data, knob, s_range, plane))
+
+        # Extract the optimized parameter, Jacobian, and residuals
+        params = result.x
+        jacobian = result.jac
+        residuals = self._objective(params, aper_data, knob, s_range, plane)
+        
+        # Compute statistics
+        n = len(residuals)
+        p = len(params)
+        sigma_squared = np.sum(residuals**2) / (n - p)
+        covariance = np.linalg.inv(jacobian.T @ jacobian) * sigma_squared
+        param_uncertainty = np.sqrt(np.diag(covariance))
+
+        return params[0], param_uncertainty[0]
+
+    def _merge_twiss_and_bpm(self, twiss_data, s_range):
+    
+        # Rename the columns to differentiate between simulated and measured data
+        simulated_data = twiss_data[['name', 's', 'x', 'y']].rename(columns={'x': 'x_simulated', 'y': 'y_simulated'})
+        
+        # Merge the measured and simulated data into one dataframe
+        merged = pd.merge(self.data, simulated_data, on='name').sort_values(by='s').reset_index(drop=True)
+        
+        # If range was specified, use it
+        if s_range: merged = merged[(merged['s'] >= s_range[0]) & (merged['s'] <= s_range[1])]
+        
+        return merged
+
+    def _simulate(self, angle, aper_data, knob, s_range):
+        
+        # Vary the crossing angle
+        aper_data.change_knob(knob, angle)
+        aper_data.twiss()
+        
+        # Merge new simulated data with the measured data
+        merged_b1 = self._merge_twiss_and_bpm(aper_data.tw_b1, s_range)
+        merged_b2 = self._merge_twiss_and_bpm(aper_data.tw_b2, s_range)
+        
+        # Perform the fitting on both beams simultanously
+        return pd.concat([merged_b1, merged_b2], ignore_index=True)
+
+    def _objective(self, angle, aper_data, knob, s_range, plane):
+        
+        df = self._simulate(angle, aper_data, knob, s_range)
+
+        # Calculate the residuals for the plane of interest
+        if plane == 'horizontal': residuals = df['x'] - df['x_simulated']
+        elif plane == 'vertical': residuals =  df['y'] - df['y_simulated']
+            
+        return residuals
 
 class CollimatorsData:
 

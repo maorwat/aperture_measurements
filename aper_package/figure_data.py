@@ -26,10 +26,10 @@ def plot_BPM_data(data: object,
     elif plane == 'vertical': y_b1, y_b2 = data.b1.y, data.b2.y
 
     # Make sure the units are in meters like twiss data
-    b1 = go.Scatter(x=data.b1.s, y=y_b1/1e6, mode='markers', 
+    b1 = go.Scatter(x=data.b1.s, y=y_b1, mode='markers', 
                           line=dict(color='blue'), text = data.b1.name, name='BPM beam 1')
     
-    b2 = go.Scatter(x=data.b2.s, y=y_b2/1e6, mode='markers', 
+    b2 = go.Scatter(x=data.b2.s, y=y_b2, mode='markers', 
                           line=dict(color='red'), text = data.b2.name, name='BPM beam 2', visible=False)
     
     return np.array([True, False]), [b1, b2]
@@ -230,7 +230,7 @@ def plot_collimators(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scat
 
     return visibility_arr, collimators
 
-def plot_envelopes(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
+def plot_envelopes(data: object, plane: str):
     """
     Plot the beam envelopes for a given plane.
 
@@ -241,55 +241,53 @@ def plot_envelopes(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatte
     Returns:
         Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and a list of Plotly scatter traces.
     """
+    
+    upper_b1 = create_envelope(data.tw_b1, plane, 'beam 1', 'up', None, True)
+    lower_b1 = create_envelope(data.tw_b1, plane, 'beam 1', 'down', 'tonexty', True)
+    upper_b2 = create_envelope(data.tw_b2, plane, 'beam 2', 'up', None, False)
+    lower_b2 = create_envelope(data.tw_b2, plane, 'beam 2', 'down', 'tonexty', False)
 
-    # Define hover template with customdata
-    hover_template = ("s: %{x} [m]<br>"
-                        "x: %{y} [m]<br>"
-                        "element: %{text}<br>"
-                        "distance from nominal: %{customdata} [mm]")
-
-    if plane == 'horizontal':
-
-        upper_b1 = go.Scatter(x=data.tw_b1.s, y=data.tw_b1.x_up, mode='lines', 
-                                  text = data.tw_b1.name, name='Upper envelope beam 1', 
-                                  fill=None, line=dict(color='rgba(0,0,255,0)'),
-                                  customdata=data.tw_b1.x_from_nom_to_top, hovertemplate=hover_template)
-        lower_b1 = go.Scatter(x=data.tw_b1.s, y=data.tw_b1.x_down, mode='lines', 
-                                  text = data.tw_b1.name, name='Lower envelope beam 1', 
-                                  line=dict(color='rgba(0,0,255,0)'), fill='tonexty', fillcolor='rgba(0,0,255,0.1)',
-                                  customdata=data.tw_b1.x_from_nom_to_bottom, hovertemplate=hover_template)
-        upper_b2 = go.Scatter(x=data.tw_b2.s, y=data.tw_b2.x_up, mode='lines', 
-                                  text = data.tw_b2.name, name='Upper envelope beam 2', 
-                                  fill=None, line=dict(color='rgba(255,0,0,0)'), visible=False,
-                                  customdata=data.tw_b2.x_from_nom_to_top, hovertemplate=hover_template)
-        lower_b2 = go.Scatter(x=data.tw_b2.s, y=data.tw_b2.x_down, mode='lines', 
-                                  text = data.tw_b2.name, name='Lower envelope beam 2', visible=False, 
-                                  line=dict(color='rgba(255,0,0,0)'), fill='tonexty', fillcolor='rgba(255,0,0,0.1)', 
-                                  customdata=data.tw_b2.x_from_nom_to_bottom, hovertemplate=hover_template)
-        
-    elif plane == 'vertical':
-
-        upper_b1 = go.Scatter(x=data.tw_b1.s, y=data.tw_b1.y_up, mode='lines', 
-                                  text = data.tw_b1.name, name='Upper envelope beam 1', 
-                                  fill=None, line=dict(color='rgba(0,0,255,0)'),
-                                  customdata=data.tw_b1.y_from_nom_to_top, hovertemplate=hover_template)
-        lower_b1 = go.Scatter(x=data.tw_b1.s, y=data.tw_b1.y_down, mode='lines', 
-                                  text = data.tw_b1.name, name='Lower envelope beam 1', 
-                                  line=dict(color='rgba(0,0,255,0)'), fill='tonexty', fillcolor='rgba(0,0,255,0.1)',
-                                  customdata=data.tw_b1.y_from_nom_to_bottom, hovertemplate=hover_template)
-        upper_b2 = go.Scatter(x=data.tw_b2.s, y=data.tw_b2.y_up, mode='lines', 
-                                  text = data.tw_b2.name, name='Upper envelope beam 2', 
-                                  fill=None, line=dict(color='rgba(255,0,0,0)'), visible=False,
-                                  customdata=data.tw_b2.y_from_nom_to_top, hovertemplate=hover_template)
-        lower_b2 = go.Scatter(x=data.tw_b2.s, y=data.tw_b2.y_down, mode='lines', 
-                                  text = data.tw_b2.name, name='Lower envelope beam 2', visible=False, 
-                                  line=dict(color='rgba(255,0,0,0)'), fill='tonexty', fillcolor='rgba(255,0,0,0.1)',
-                                  customdata=data.tw_b2.y_from_nom_to_bottom, hovertemplate=hover_template)
-        
     visibility = np.array([True, True, False, False])
     traces = [upper_b1, lower_b1, upper_b2, lower_b2]
 
     return visibility, traces
+
+def create_envelope(twiss_df, plane, beam, up_or_down, fill, visibility):
+
+    # Define hover template with customdata
+    hover_template = ("s: %{x:.2f} [m]<br>"
+                        "x: %{y:.2f} [m]<br>"
+                        "x: %{customdata[2]:.2f} [σ]<br>"
+                        "element: %{text}<br>"
+                        "distance from nominal: %{customdata[0]:.2f} [mm]<br>"
+                        "distance from nominal: %{customdata[1]:.2f} [σ]")
+    
+    base_column = 'x' if plane == 'horizontal' else 'y'
+    
+    position_column, sigma = base_column+'_'+up_or_down, 'sigma_'+base_column
+    
+    if up_or_down == 'up': nom_to_envelope_column, name = base_column+'_from_nom_to_top', 'Upper envelope '+beam
+    elif up_or_down == 'down': nom_to_envelope_column, name = base_column+'_from_nom_to_bottom', 'Bottom envelope '+beam
+            
+    if beam == 'beam 1': color = 'rgba(0,0,255,0.1)'
+    elif beam == 'beam 2': color = 'rgba(255,0,0,0.1)'
+
+
+    customdata = list(zip(twiss_df[nom_to_envelope_column], twiss_df[nom_to_envelope_column]*1e-3/twiss_df[sigma], twiss_df[position_column]/twiss_df[sigma]))
+
+    trace = go.Scatter(x=twiss_df.s, 
+            y=twiss_df[position_column], 
+            mode='lines', 
+            text=twiss_df.name, 
+            name=name, 
+            fill=fill, 
+            line=dict(color='rgba(0, 0, 0, 0)'),
+            fillcolor=color,
+            customdata=customdata, 
+            hovertemplate=hover_template,
+            visible = visibility)
+    
+    return trace
 
 def plot_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
     """
