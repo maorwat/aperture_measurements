@@ -438,3 +438,16 @@ class ApertureData:
 
         # Make sure the elements align with twiss data (if cycling was performed)
         self.elements = match_with_twiss(self.tw_b1, df)
+
+    def get_local_bump_knobs(self, plane):
+
+        if plane == 'horizontal': key = 'acbh'
+        elif plane == 'vertical': key = 'acbv'
+
+        bump_knobs_b1 = [i for i in self.line_b1.vv.vars.keys() 
+            if key in i and 'b1' in i and'x' not in i and 's' not in i]
+        
+        bump_knobs_b2 = [i for i in self.line_b2.vv.vars.keys() 
+            if key in i and 'b2' in i and 'x' not in i and 's' not in i]
+        
+        return bump_knobs_b1, bump_knobs_b2

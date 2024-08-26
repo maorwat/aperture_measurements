@@ -24,6 +24,7 @@ class InteractiveTool():
                  initial_path: Optional[str] = '/eos/project-c/collimation-team/machine_configurations/',
                  spark: Optional[Any] = None, 
                  plane: Optional[str] = 'horizontal',
+                 angle_range = (0, 800),
                  additional_traces: Optional[list] = None):
         
         """
@@ -50,11 +51,13 @@ class InteractiveTool():
         # By default show horizontal plane first
         self.plane = plane
         self.spark = spark
+        self.angle_range = angle_range
         # Create and configure widgets
         self.initialise_knob_controls()
         self.create_buttons()
         self.create_widgets()
         self.create_file_choosers()
+        self.create_local_bump_controls()
         # Set-up corresponding evcent handlers
         self.setup_event_handlers()
 
@@ -186,12 +189,55 @@ class InteractiveTool():
             tooltip='blah blah'
         )
 
+    def create_local_bump_controls(self):
+
+        # Select which beam you want to add the bump to
+        self.beam_dropdown = Dropdown(
+                    options=['beam 1', 'beam 2'],
+                    description='Select knob:',
+                    layout=Layout(width='300px'),
+                    disabled=False)
+        
+        # Attach the update function to the first dropdown's 'value' attribute
+        self.beam_dropdown.observe(self.update_mcb_dropdown, names='value')
+        
+        # Select local bump location
+        self.mcb_dropdown = Dropdown(
+                    options=[],
+                    description='Select bump location:',
+                    layout=Layout(width='300px'),
+                    disabled=False)
+        
+        # Position x/y at the bump location
+        self.bump_input = FloatText(
+                    value=0,                    # Initial value (empty string)
+                    description='Size of the bump [mm]:',    # Label for the widget 
+                    style={'description_width': 'initial'}, # Adjust the width of the description label
+                    layout=Layout(width='300px')) 
+        
+        self.add_bump_button = Button(
+                description="Add local bump", 
+                style=widgets.ButtonStyle(button_color='pink'), 
+                tooltip='Add bump'
+            )
+
+    def update_mcb_dropdown(self, change):
+
+        options_b1, options_b2 = self.aperture_data.get_local_bump_knobs(self.plane)
+
+        if change['new'] == 'beam 1':
+            self.mcb_dropdown.options = options_b1
+            self.mcb_dropdown.value = options_b1[0]
+        elif change['new'] == 'beam 2':
+            self.mcb_dropdown.options = options_b2
+            self.mcb_dropdown.value = options_b2[0]
+
     def create_ls_controls(self):
 
         if self.spark:
             # Dropdown to select a knob to vary
             if hasattr(self, 'aperture_data'):
-                angle_knobs = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob] 
+                angle_knobs = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob and 'aux' not in knob] 
             else: angle_knobs = []
 
             self.ls_dropdown = Dropdown(
@@ -219,18 +265,6 @@ class InteractiveTool():
                     readout_format='d'
                 )
             
-            # Range slider to specify bounds for angle
-            self.angle_range_slider = widgets.FloatRangeSlider(
-                    value=[40, 400],
-                    min=0.0,
-                    max=1000,
-                    step=0.01,
-                    description='Angle bounds:',
-                    continuous_update=False,
-                    layout=Layout(width='400px'),
-                    readout_format='d'
-                )
-            
             self.fit_button = Button(
                 description="Fit to data", 
                 style=widgets.ButtonStyle(button_color='pink'), 
@@ -240,7 +274,7 @@ class InteractiveTool():
 
             self.result_output = widgets.Output()
 
-            ls_row_controls = [self.ls_dropdown, self.init_angle_input, self.s_range_slider, self.angle_range_slider, self.fit_button, self.result_output]
+            ls_row_controls = [self.ls_dropdown, self.init_angle_input, self.s_range_slider, self.fit_button, self.result_output]
             
             self.widgets += ls_row_controls
 
@@ -252,10 +286,9 @@ class InteractiveTool():
 
         init_angle = self.init_angle_input.value
         knob = self.ls_dropdown.value
-        angle_range=self.angle_range_slider.value
         s_range=self.s_range_slider.value
 
-        self.best_fit_angle, self.best_fit_uncertainty = self.BPM_data.least_squares_fit(self.aperture_data, init_angle, knob, self.plane, angle_range, s_range)
+        self.best_fit_angle, self.best_fit_uncertainty = self.BPM_data.least_squares_fit(self.aperture_data, init_angle, knob, self.plane, self.angle_range, s_range)
 
         with self.result_output:
             self.result_output.clear_output()  # Clear previous output
@@ -290,7 +323,8 @@ class InteractiveTool():
         self.file_chooser_controls = [self.file_chooser_line, self.file_chooser_aperture, self.file_chooser_optics]
         self.first_row_controls = [self.knob_dropdown, self.add_button, self.remove_button, self.reset_button]
         self.second_row_controls = [self.cycle_input, self.envelope_input, self.plane_dropdown, self.apply_changes_button]
-        self.widgets = self.file_chooser_controls+self.first_row_controls+self.second_row_controls+self.second_row_controls     
+        self.bump_controls = [self.beam_dropdown, self.mcb_dropdown, self.bump_input, self.add_bump_button]
+        self.widgets = self.file_chooser_controls+self.first_row_controls+self.second_row_controls+self.bump_controls     
         self.timber_row_controls = self.initialise_timber_data() # If spark was not given this will return a None     
         self.ls_row_controls = self.create_ls_controls()
 
@@ -373,6 +407,16 @@ class InteractiveTool():
                 width='100%',                   # Full width of the container
                 padding='10px',                 # Add padding around controls
                 border='solid 2px #ccc'))       # Border around the HBox
+        
+        # Create layout for the second row of controls
+        bump_row_layout = HBox(
+            self.bump_controls,
+            layout=Layout(
+                justify_content='space-around', # Distribute space evenly
+                align_items='center',           # Center align all items
+                width='100%',                   # Full width of the container
+                padding='10px',                 # Add padding around controls
+                border='solid 2px #ccc'))       # Border around the HBox
 
         # TODO: this logic is a bit messy, improve later
         # Combine both rows, knob box, and graph container into a VBox layout
@@ -397,9 +441,9 @@ class InteractiveTool():
                     padding='10px',                 # Add padding around controls
                     border='solid 2px #ccc'))       # Border around the HBox
 
-            full_column = [file_chooser_layout, first_row_layout, self.knob_box, second_row_layout, timber_row_layout, ls_row_layout, self.graph_container]
+            full_column = [file_chooser_layout, first_row_layout, self.knob_box, second_row_layout, bump_row_layout, timber_row_layout, ls_row_layout, self.graph_container]
 
-        else: full_column = [file_chooser_layout, first_row_layout, self.knob_box, second_row_layout, self.graph_container]
+        else: full_column = [file_chooser_layout, first_row_layout, self.knob_box, second_row_layout, bump_row_layout, self.graph_container]
 
         self.full_layout = VBox(
             full_column,
@@ -490,12 +534,14 @@ class InteractiveTool():
         # Load new aperture data
         self.aperture_data = ApertureData(path_b1=path)
 
-        if self.path_aperture:
+        # Make sure not to load the aperture and optics twice
+        # So only load if the path was already provided and not changed
+        if self.path_aperture and self.path_aperture == self.file_chooser_aperture.selected:
             # Re-load aperture and optics data if selected
             print_and_clear('Re-loading aperture data...')
             self.aperture_data.load_aperture(self.file_chooser_aperture.selected)
 
-        if self.path_optics:
+        if self.path_optics and self.path_optics == self.file_chooser_optics.selected:
             print_and_clear('Re-loading optics elements...')
             self.aperture_data.load_elements(self.file_chooser_optics.selected)
 
@@ -508,6 +554,11 @@ class InteractiveTool():
         # Update UI components
         self.enable_widgets()
         self.update_knob_dropdown()
+
+        options_b1, _ = self.aperture_data.get_local_bump_knobs(self.plane)
+
+        self.mcb_dropdown.options = options_b1
+        self.mcb_dropdown.value = options_b1[0]
 
     def _load_aperture_data(self, path):
         """
@@ -795,15 +846,6 @@ class InteractiveTool():
         self.knob_dropdown.options = self.aperture_data.knobs['knob'].to_list()
         if self.spark: self.ls_dropdown.options = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob]
 
-    def disable_widgets(self):
-        """
-        Disables all buttons except load line
-        """
-        filtered_buttons = [widget for widget in self.widgets if isinstance(widget, Button)]
-
-        for i in filtered_buttons[1:]:
-            i.disabled = True
-
     def disable_first_row_controls(self):
         """
         Disables first row controls
@@ -812,14 +854,19 @@ class InteractiveTool():
 
         for i in filtered_buttons:
             i.disabled = True
+
+    def disable_bump_row_controls(self):
+        """
+        Disables bump row controls
+        """
+        for i in self.bump_controls:
+            i.disabled = True
     
     def enable_widgets(self):
         """
         Enables all buttons
         """
-
-        filtered_buttons = [widget for widget in self.widgets if isinstance(widget, Button)]
-        for i in filtered_buttons:
+        for i in self.widgets:
             i.disabled = False
 
     def update_graph(self):
@@ -835,6 +882,7 @@ class InteractiveTool():
             self.fig = make_subplots(rows=1, cols=1)
             self.row, self.col = 1, 1
             self.disable_first_row_controls()
+            self.disable_bump_row_controls()
 
         self.update_layout()   
         # Change to a widget
