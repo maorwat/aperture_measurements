@@ -200,6 +200,7 @@ class InteractiveTool():
         
         # Attach the update function to the first dropdown's 'value' attribute
         self.beam_dropdown.observe(self.update_mcb_dropdown, names='value')
+        self.plane_dropdown.observe(self.update_mcb_dropdown_by_plane, names='value')
         
         # Select local bump location
         self.mcb_dropdown = Dropdown(
@@ -220,15 +221,51 @@ class InteractiveTool():
                 style=widgets.ButtonStyle(button_color='pink'), 
                 tooltip='Add bump'
             )
+        
+        self.add_bump_button.on_click(self.on_add_bump_button_clicked)
+
+    def on_add_bump_button_clicked(self, b):
+        
+        beam = self.beam_dropdown.value
+        size = self.bump_input.value
+        knob = self.mcb_dropdown.value
+
+        print_and_clear('Adding a local bump...')
+
+        self.aperture_data.add_3c_bump(knob, size, beam)
+        self.update_graph()
 
     def update_mcb_dropdown(self, change):
 
-        options_b1, options_b2 = self.aperture_data.get_local_bump_knobs(self.plane)
+        options_b1, options_b2 = self.aperture_data.get_local_bump_knobs(self.plane_dropdown.value)
 
         if change['new'] == 'beam 1':
             self.mcb_dropdown.options = options_b1
             self.mcb_dropdown.value = options_b1[0]
         elif change['new'] == 'beam 2':
+            self.mcb_dropdown.options = options_b2
+            self.mcb_dropdown.value = options_b2[0]
+
+    def update_mcb_dropdown_by_plane(self, change):
+
+        if hasattr(self, 'aperture_data'):
+            options_b1, options_b2 = self.aperture_data.get_local_bump_knobs(self.plane_dropdown.value)
+
+            if self.beam_dropdown.value == 'beam 1':
+                self.mcb_dropdown.options = options_b1
+                self.mcb_dropdown.value = options_b1[0]
+            elif self.beam_dropdown.value == 'beam 2':
+                self.mcb_dropdown.options = options_b2
+                self.mcb_dropdown.value = options_b2[0]
+
+    def update_mcb_dropdown_by_line(self):
+
+        options_b1, options_b2 = self.aperture_data.get_local_bump_knobs(self.plane_dropdown.value)
+
+        if self.beam_dropdown.value == 'beam 1':
+            self.mcb_dropdown.options = options_b1
+            self.mcb_dropdown.value = options_b1[0]
+        elif self.beam_dropdown.value == 'beam 2':
             self.mcb_dropdown.options = options_b2
             self.mcb_dropdown.value = options_b2[0]
 
@@ -243,7 +280,7 @@ class InteractiveTool():
             self.ls_dropdown = Dropdown(
                     options=angle_knobs,
                     description='Select knob:',
-                    layout=Layout(width='150px'),
+                    layout=Layout(width='200px'),
                     disabled=False)
                 
             # Float box to input the inital guess 
@@ -292,7 +329,7 @@ class InteractiveTool():
 
         with self.result_output:
             self.result_output.clear_output()  # Clear previous output
-            print(round(self.best_fit_angle, 2), round(self.best_fit_uncertainty, 2))
+            print(self.best_fit_angle, 2, self.best_fit_uncertainty, 2)
 
         self.update_graph()
 
@@ -710,6 +747,7 @@ class InteractiveTool():
                 path_replacement={'b1': 'b2'},
                 load_function=self._load_line_data
             )
+            self.update_mcb_dropdown_by_line()
 
         if self.path_aperture != self.file_chooser_aperture.selected:
             self.path_aperture = self.file_chooser_aperture.selected
@@ -742,17 +780,18 @@ class InteractiveTool():
 
         # Retrieve the selected element from the widget
         first_element = self.cycle_input.value
-        # First check if changed
-        if hasattr(self.aperture_data, 'first_element'): 
-            # if this is different than the current one
-            if self.aperture_data.first_element != first_element:
+        if first_element != '':
+            # First check if changed
+            if hasattr(self.aperture_data, 'first_element'): 
+                # if this is different than the current one
+                if self.aperture_data.first_element != first_element:
+                    print_and_clear(f'Setting {first_element} as the first element...')
+                    # Cycle
+                    self.aperture_data.cycle(first_element)
+            # If the first element was not set before, cycle
+            else: 
                 print_and_clear(f'Setting {first_element} as the first element...')
-                # Cycle
                 self.aperture_data.cycle(first_element)
-        # If the first element was not set before, cycle
-        else: 
-            print_and_clear(f'Setting {first_element} as the first element...')
-            self.aperture_data.cycle(first_element)
 
         # If new, change the size of the envelope
         selected_size = self.envelope_input.value
@@ -828,7 +867,7 @@ class InteractiveTool():
         """
         Updates the layout of the knob_box with current knob widgets.
         """
-        # Group the widgets into sets of three per row
+        # Group the widgets into sets of three per row21840
         rows = []
         for i in range(0, len(self.selected_knobs), 3):
             row = HBox([self.knob_widgets[knob] for knob in self.selected_knobs[i:i+3]],
@@ -853,6 +892,12 @@ class InteractiveTool():
         filtered_buttons = [widget for widget in self.first_row_controls if isinstance(widget, Button)]
 
         for i in filtered_buttons:
+            i.disabled = True
+
+    def disable_spark_controls(self):
+        for i in self.timber_row_controls:
+            i.disabled = True
+        for i in self.ls_row_controls:
             i.disabled = True
 
     def disable_bump_row_controls(self):
@@ -883,6 +928,7 @@ class InteractiveTool():
             self.row, self.col = 1, 1
             self.disable_first_row_controls()
             self.disable_bump_row_controls()
+            if self.spark: self.disable_spark_controls()
 
         self.update_layout()   
         # Change to a widget

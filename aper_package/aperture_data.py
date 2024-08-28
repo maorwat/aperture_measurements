@@ -451,3 +451,44 @@ class ApertureData:
             if key in i and 'b2' in i and 'x' not in i and 's' not in i]
         
         return bump_knobs_b1, bump_knobs_b2
+    
+    def add_3c_bump(self, knob, size, beam):
+        """
+        It only works in a certain range TODO come back 
+        """
+
+        if beam == 'beam 1': line = self.line_b1
+        elif beam == 'beam 2': line = self.line_b2
+
+        new_value = int(knob[4:6])+2
+        right_knob = knob.replace(knob[4:6], str(new_value))
+        new_value = int(knob[4:6])-2
+        left_knob = knob.replace(knob[4:6], str(new_value))
+
+        varylist = [left_knob, knob, right_knob]
+
+        self.opt = line.match(
+            vary=xt.VaryList(varylist, step=1e-8),
+            targets = [
+                xt.TargetSet(y=size/10e2, at=self.transform_string(knob)), # something id off with the units here???????/
+                xt.TargetSet(y=0, at=self.transform_string(left_knob)),
+                xt.TargetSet(y=0, at=self.transform_string(right_knob))
+            ])
+        
+        self.twiss()
+        
+    def transform_string(self, s):
+        # Replace 'acb' with 'mcb'
+        s = s.replace('acb', 'mcb')
+        
+        # Identify the parts of the string
+        prefix = s[:3]      # 'mcb'
+        rest = s[3:]        # 'v21.l3b1'
+        
+        # Extract the first letter/number combination
+        part1, part2 = rest.split('.', 1) # part1 = 'v21', part2 = 'l3b1'
+        
+        # Reconstruct the string
+        transformed = f"{prefix}{part1[0]}.{part1[1:]}{part2[:2]}.{part2[2:]}"
+        
+        return transformed

@@ -108,7 +108,7 @@ class BPMData:
         covariance = np.linalg.inv(jacobian.T @ jacobian) * sigma_squared
         param_uncertainty = np.sqrt(np.diag(covariance))
 
-        return params[0], param_uncertainty[0]
+        return round(params[0], 2), round(param_uncertainty[0], 2)
 
     def _merge_twiss_and_bpm(self, twiss_data, s_range):
     
