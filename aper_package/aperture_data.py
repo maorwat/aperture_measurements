@@ -439,56 +439,62 @@ class ApertureData:
         # Make sure the elements align with twiss data (if cycling was performed)
         self.elements = match_with_twiss(self.tw_b1, df)
 
-    def get_local_bump_knobs(self, plane):
+    def get_local_bump_knobs(self, plane: str):
 
-        if plane == 'horizontal': key = 'acbh'
-        elif plane == 'vertical': key = 'acbv'
-
-        bump_knobs_b1 = [i for i in self.line_b1.vv.vars.keys() 
-            if key in i and 'b1' in i and'x' not in i and 's' not in i]
-        
-        bump_knobs_b2 = [i for i in self.line_b2.vv.vars.keys() 
-            if key in i and 'b2' in i and 'x' not in i and 's' not in i]
-        
-        return bump_knobs_b1, bump_knobs_b2
+        if plane == 'horizontal': key = 'mcbh'
+        elif plane == 'vertical': key = 'mcbv'
     
-    def add_3c_bump(self, knob, size, beam):
-        """
-        It only works in a certain range TODO come back 
-        """
+        mcb_b1 = [element for element in list(self.line_b1.element_names) 
+                if key in element and 'aper' not in element and 'mke' not in element]
+        mcb_b2 = [element for element in list(self.line_b2.element_names)
+                if key in element and 'aper' not in element and 'mke' not in element]
+
+        return mcb_b1, mcb_b2
+
+    def add_local_bump(self, 
+                       element: str, 
+                       start_mcb: str, 
+                       end_mcb: str,
+                       size: float, 
+                       beam: str,
+                       plane: str):
 
         if beam == 'beam 1': line = self.line_b1
         elif beam == 'beam 2': line = self.line_b2
 
-        new_value = int(knob[4:6])+2
-        right_knob = knob.replace(knob[4:6], str(new_value))
-        new_value = int(knob[4:6])-2
-        left_knob = knob.replace(knob[4:6], str(new_value))
+        # Find the indices of the start and end elements
+        start_index = line.element_names.index(start_mcb)
+        end_index = line.element_names.index(end_mcb)
+        
+        # In case the elements were selected in the wrong order
+        elements_between = list(line.element_names[start_index:end_index + 1])
+        if len(elements_between) == 0: elements_between = list(line.element_names[end_index:start_index + 1])
+        
+        relevant_mcbs = [element for element in elements_between if 'mcbv' in element and 'aper' not in element and 'mke' not in element]
+        mcb_count = len(relevant_mcbs)
+        
+        if mcb_count == 3 or 4:
 
-        varylist = [left_knob, knob, right_knob]
+            print_and_clear(f'Applying a {mcb_count}C-bump...')
 
-        self.opt = line.match(
-            vary=xt.VaryList(varylist, step=1e-8),
-            targets = [
-                xt.TargetSet(y=size/10e2, at=self.transform_string(knob)), # something id off with the units here???????/
-                xt.TargetSet(y=0, at=self.transform_string(left_knob)),
-                xt.TargetSet(y=0, at=self.transform_string(right_knob))
-            ])
+            varylist = [reverse_transform_string(element) for element in relevant_mcbs]
         
-        self.twiss()
+            if plane == 'vertical':
+                target1 = xt.Target(y=0, at=relevant_mcbs[0])
+                target2 = xt.Target(y=size/1000, at=element)
+                target3 = xt.Target(y=0, at=relevant_mcbs[-1])
+            elif plane == 'horizontal':
+                target1 = xt.Target(x=0, at=relevant_mcbs[0])
+                target2 = xt.Target(x=size/1000, at=element)
+                target3 = xt.Target(x=0, at=relevant_mcbs[-1])
+                
+            targets = [target1, target2, target3]
+            
+            self.opt = line.match(
+                vary=xt.VaryList(varylist, step=1e-8),
+                targets = targets)
+            
+            self.twiss()
+            print(self.opt.get_knob_values())
         
-    def transform_string(self, s):
-        # Replace 'acb' with 'mcb'
-        s = s.replace('acb', 'mcb')
-        
-        # Identify the parts of the string
-        prefix = s[:3]      # 'mcb'
-        rest = s[3:]        # 'v21.l3b1'
-        
-        # Extract the first letter/number combination
-        part1, part2 = rest.split('.', 1) # part1 = 'v21', part2 = 'l3b1'
-        
-        # Reconstruct the string
-        transformed = f"{prefix}{part1[0]}.{part1[1:]}{part2[:2]}.{part2[2:]}"
-        
-        return transformed
+        else: print_and_clear('Wrong mcbs, retry')

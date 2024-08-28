@@ -256,7 +256,7 @@ def create_envelope(twiss_df, plane, beam, up_or_down, fill, visibility):
 
     # Define hover template with customdata
     hover_template = ("s: %{x:.2f} [m]<br>"
-                        "x: %{y:.2f} [m]<br>"
+                        "x: %{y:.4f} [m]<br>"
                         "x: %{customdata[2]:.2f} [σ]<br>"
                         "element: %{text}<br>"
                         "distance from nominal: %{customdata[0]:.2f} [mm]<br>"

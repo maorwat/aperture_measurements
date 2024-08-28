@@ -7,7 +7,7 @@ from typing import Optional, List, Tuple, Any
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText, DatePicker, Text, Dropdown
+from ipywidgets import widgets, VBox, HBox, Button, Layout, FloatText, DatePicker, Text, Dropdown, Label
 from IPython.display import display
 from ipyfilechooser import FileChooser
 
@@ -53,19 +53,40 @@ class InteractiveTool():
         self.spark = spark
         self.angle_range = angle_range
         # Create and configure widgets
-        self.initialise_knob_controls()
-        self.create_buttons()
-        self.create_widgets()
+        self.create_knob_controls()
+        self.create_options_controls()
         self.create_file_choosers()
         self.create_local_bump_controls()
+        self.create_graph_container()
         # Set-up corresponding evcent handlers
         self.setup_event_handlers()
 
         # Put all the widgets together into a nice layout
-        self.group_controls_into_rows()
+        self.group_all_widgets()
         self.define_widget_layout()
 
-    def initialise_knob_controls(self):
+    def create_file_choosers(self):
+        """
+        Initializes file chooser widgets and corresponding load buttons for the user interface.
+
+        This method creates three file chooser widgets for selecting different types of files
+        (line, aperture, and optics) and initializes buttons for loading the selected files.
+        """
+
+        # Create filechoosers
+        self.file_chooser_line = FileChooser(self.initial_path, layout=Layout(width='350px'))
+        self.file_chooser_aperture = FileChooser(self.initial_path, layout=Layout(width='350px'))
+        self.file_chooser_optics = FileChooser(self.initial_path, layout=Layout(width='350px'))
+
+        # Create descriptions for each file chooser
+        line_chooser_with_label = HBox([Label("Select Line File:"), self.file_chooser_line])
+        aperture_chooser_with_label = HBox([Label("Select Aperture File:"), self.file_chooser_aperture])
+        optics_chooser_with_label = HBox([Label("Select Optics File:"), self.file_chooser_optics])
+
+        # Group together
+        self.file_chooser_controls = [line_chooser_with_label, aperture_chooser_with_label, optics_chooser_with_label]
+
+    def create_knob_controls(self):
         """
         Initializes the knob controls for the user interface. 
 
@@ -100,11 +121,6 @@ class InteractiveTool():
             padding='10px',
             border='solid 2px #eee'))
         
-    def create_buttons(self):
-        """
-        Create and configure various control buttons for the interface.
-        """
-
         # Button to add selection
         self.add_button = Button(
             description="Add", 
@@ -125,16 +141,11 @@ class InteractiveTool():
             tooltip='Reset all knobs to their default or nominal values.'
         )
 
-        # Button to switch between horizontal and vertical planes
-        self.apply_changes_button = Button(
-            description="Apply changes", 
-            style=widgets.ButtonStyle(button_color='pink'), 
-            tooltip='blah blah'
-        )
+        self.knob_controls = [self.knob_dropdown, self.add_button, self.remove_button, self.reset_button]
         
-    def create_widgets(self):
+    def create_options_controls(self):
         """
-        Define and configure widgets for knob selection, cycle start, envelope size, and graph container.
+        Controls for the third row: first element, envelope size, plane
         """
         # Create a text widget to specify cycle start
         self.cycle_input = Text(
@@ -146,48 +157,28 @@ class InteractiveTool():
 
         # Create a float widget to specify envelope size
         if hasattr(self, 'aperture_data'): n = self.aperture_data.n
-        else: n = 0
+        else: n = 4
 
         self.envelope_input = FloatText(
-                value=0,                    # Initial value (empty string)
+                value=4,                    # Initial value (4 sigma)
                 description='Envelope size [σ]:',    # Label for the widget 
                 style={'description_width': 'initial'}, # Adjust the width of the description label
                 layout=Layout(width='300px'))           # Set the width of the widget
-
-        # Create an empty VBox container for the graph
-        self.graph_container = VBox(layout=Layout(
-            justify_content='center',
-            align_items='center',
-            width='100%',
-            padding='10px',
-            border='solid 2px #eee'))
-
+        
         # Create a dropdown to select a plane
         self.plane_dropdown = Dropdown(
             options=['horizontal', 'vertical'],
             description='Select plane:',
             disabled=False)
         
-    def create_file_choosers(self):
-        """
-        Initializes file chooser widgets and corresponding load buttons for the user interface.
-
-        This method creates three file chooser widgets for selecting different types of files
-        (line, aperture, and optics) and initializes buttons for loading the selected files.
-        """
-
-        # Create filechoosers
-        self.file_chooser_line = FileChooser(self.initial_path, layout=Layout(width='350px'))
-        self.file_chooser_aperture = FileChooser(self.initial_path, layout=Layout(width='350px'))
-        self.file_chooser_optics = FileChooser(self.initial_path, layout=Layout(width='350px'))
-
-        # Initialize corresponding load buttons with descriptions, styles, and tooltips
-        # Button to load line data from JSON file
-        self.load_all_button = Button(
-            description="Load all",
-            style=widgets.ButtonStyle(button_color='pink'),
+        # Button to switch between horizontal and vertical planes
+        self.apply_changes_button = Button(
+            description="Apply changes", 
+            style=widgets.ButtonStyle(button_color='pink'), 
             tooltip='blah blah'
         )
+
+        self.options_controls = [self.cycle_input, self.envelope_input, self.plane_dropdown, self.apply_changes_button]
 
     def create_local_bump_controls(self):
 
@@ -199,15 +190,30 @@ class InteractiveTool():
                     disabled=False)
         
         # Attach the update function to the first dropdown's 'value' attribute
-        self.beam_dropdown.observe(self.update_mcb_dropdown, names='value')
+        self.beam_dropdown.observe(self.update_mcb_dropdown_by_beam, names='value')
         self.plane_dropdown.observe(self.update_mcb_dropdown_by_plane, names='value')
         
         # Select local bump location
-        self.mcb_dropdown = Dropdown(
+        self.mcb_start_dropdown = Dropdown(
                     options=[],
-                    description='Select bump location:',
-                    layout=Layout(width='300px'),
+                    description='Select start:',
+                    layout=Layout(width='200px'),
                     disabled=False)
+        
+        self.mcb_end_dropdown = Dropdown(
+                    options=[],
+                    description='Select end:',
+                    layout=Layout(width='200px'),
+                    disabled=False)
+        
+        # Create a Text widget
+        self.peak_element_input = Text(
+            value='',          # Default value
+            placeholder='e. g. mq.21l3.b1',  # Placeholder text
+            description='Peak element:',  # Label
+            disabled=False,     # Enable/disable the input field
+            layout=Layout(width='200px')
+        )
         
         # Position x/y at the bump location
         self.bump_input = FloatText(
@@ -223,51 +229,47 @@ class InteractiveTool():
             )
         
         self.add_bump_button.on_click(self.on_add_bump_button_clicked)
+        self.bump_controls = [self.beam_dropdown, self.mcb_start_dropdown, self.mcb_end_dropdown, self.peak_element_input, self.bump_input, self.add_bump_button]
 
     def on_add_bump_button_clicked(self, b):
         
         beam = self.beam_dropdown.value
         size = self.bump_input.value
-        knob = self.mcb_dropdown.value
+        element = self.peak_element_input.value
+        start_mcb= self.mcb_start_dropdown.value
+        end_mcb = self.mcb_end_dropdown.value
 
-        print_and_clear('Adding a local bump...')
-
-        self.aperture_data.add_3c_bump(knob, size, beam)
+        self.aperture_data.add_local_bump(element, start_mcb, end_mcb, size, beam, self.plane)
         self.update_graph()
+    
+    def update_mcb_dropdown(self, beam_selector, options_b1, options_b2):
 
-    def update_mcb_dropdown(self, change):
+        if beam_selector == 'beam 1':
+            self.mcb_start_dropdown.options = options_b1
+            self.mcb_start_dropdown.value = options_b1[0]
+            self.mcb_end_dropdown.options = options_b1
+            self.mcb_end_dropdown.value = options_b1[0]
+        elif beam_selector == 'beam 2':
+            self.mcb_start_dropdown.options = options_b2
+            self.mcb_start_dropdown.value = options_b2[0]
+            self.mcb_end_dropdown.options = options_b2
+            self.mcb_end_dropdown.value = options_b2[0]
+
+    def update_mcb_dropdown_by_beam(self, change):
 
         options_b1, options_b2 = self.aperture_data.get_local_bump_knobs(self.plane_dropdown.value)
-
-        if change['new'] == 'beam 1':
-            self.mcb_dropdown.options = options_b1
-            self.mcb_dropdown.value = options_b1[0]
-        elif change['new'] == 'beam 2':
-            self.mcb_dropdown.options = options_b2
-            self.mcb_dropdown.value = options_b2[0]
+        self.update_mcb_dropdown(change['new'], options_b1, options_b2)
 
     def update_mcb_dropdown_by_plane(self, change):
 
         if hasattr(self, 'aperture_data'):
             options_b1, options_b2 = self.aperture_data.get_local_bump_knobs(self.plane_dropdown.value)
-
-            if self.beam_dropdown.value == 'beam 1':
-                self.mcb_dropdown.options = options_b1
-                self.mcb_dropdown.value = options_b1[0]
-            elif self.beam_dropdown.value == 'beam 2':
-                self.mcb_dropdown.options = options_b2
-                self.mcb_dropdown.value = options_b2[0]
+            self.update_mcb_dropdown(self.beam_dropdown.value, options_b1, options_b2)
 
     def update_mcb_dropdown_by_line(self):
 
         options_b1, options_b2 = self.aperture_data.get_local_bump_knobs(self.plane_dropdown.value)
-
-        if self.beam_dropdown.value == 'beam 1':
-            self.mcb_dropdown.options = options_b1
-            self.mcb_dropdown.value = options_b1[0]
-        elif self.beam_dropdown.value == 'beam 2':
-            self.mcb_dropdown.options = options_b2
-            self.mcb_dropdown.value = options_b2[0]
+        self.update_mcb_dropdown(self.beam_dropdown.value, options_b1, options_b2)
 
     def create_ls_controls(self):
 
@@ -329,9 +331,19 @@ class InteractiveTool():
 
         with self.result_output:
             self.result_output.clear_output()  # Clear previous output
-            print(self.best_fit_angle, 2, self.best_fit_uncertainty, 2)
+            print(f'Best fit angle: {self.best_fit_angle} Uncertainty: {self.best_fit_uncertainty}')
 
         self.update_graph()
+
+    def create_graph_container(self):
+
+        # Create an empty VBox container for the graph
+        self.graph_container = VBox(layout=Layout(
+            justify_content='center',
+            align_items='center',
+            width='100%',
+            padding='10px',
+            border='solid 2px #eee'))
 
     def setup_event_handlers(self):
         """
@@ -345,23 +357,11 @@ class InteractiveTool():
         self.remove_button.on_click(self.on_remove_button_clicked)
         self.reset_button.on_click(self.on_reset_button_clicked)
         self.apply_changes_button.on_click(self.on_apply_changes_button_clicked)
-        self.load_all_button.on_click(self.on_load_all_button_clicked)
 
-    def group_controls_into_rows(self):
-        """
-        Organizes the user interface controls into logical rows for better layout management.
-
-        This method groups various UI controls into rows and organizes them into 
-        different categories: file chooser controls, first row controls, and second row controls.
-        It also initializes a row of timber controls if applicable.
-        """
+    def group_all_widgets(self):
 
         # Group controls together
-        self.file_chooser_controls = [self.file_chooser_line, self.file_chooser_aperture, self.file_chooser_optics]
-        self.first_row_controls = [self.knob_dropdown, self.add_button, self.remove_button, self.reset_button]
-        self.second_row_controls = [self.cycle_input, self.envelope_input, self.plane_dropdown, self.apply_changes_button]
-        self.bump_controls = [self.beam_dropdown, self.mcb_dropdown, self.bump_input, self.add_bump_button]
-        self.widgets = self.file_chooser_controls+self.first_row_controls+self.second_row_controls+self.bump_controls     
+        self.widgets = self.file_chooser_controls+self.knob_controls+self.options_controls+self.bump_controls     
         self.timber_row_controls = self.initialise_timber_data() # If spark was not given this will return a None     
         self.ls_row_controls = self.create_ls_controls()
 
@@ -370,10 +370,7 @@ class InteractiveTool():
         Initializes timber-related data and UI components if the `spark` attribute is provided.
 
         This method sets up UI elements and data handlers for interacting with timber data. 
-        If the `spark` attribute is set, it initializes data objects for collimators and BPMs, 
-        creates buttons to load this data, and sets up time selection widgets. It then adds 
-        these UI components to the main widget list and returns the list of timber-related controls.
-
+        If the `spark`  Update UI components
         Returns:
             list: List of UI components related to timber data, or None if `spark` is not provided.
         """
@@ -427,7 +424,7 @@ class InteractiveTool():
 
         # Create layout for the first row of controls
         first_row_layout = HBox(
-            self.first_row_controls,
+            self.knob_controls,
             layout=Layout(
                 justify_content='space-around', # Distribute space evenly
                 align_items='center',           # Center align all items
@@ -437,7 +434,7 @@ class InteractiveTool():
 
         # Create layout for the second row of controls
         second_row_layout = HBox(
-            self.second_row_controls,
+            self.options_controls,
             layout=Layout(
                 justify_content='space-around', # Distribute space evenly
                 align_items='center',           # Center align all items
@@ -455,8 +452,6 @@ class InteractiveTool():
                 padding='10px',                 # Add padding around controls
                 border='solid 2px #ccc'))       # Border around the HBox
 
-        # TODO: this logic is a bit messy, improve later
-        # Combine both rows, knob box, and graph container into a VBox layout
         if self.spark: 
             # Create layout for the timber row of controls
             timber_row_layout = HBox(
@@ -482,6 +477,7 @@ class InteractiveTool():
 
         else: full_column = [file_chooser_layout, first_row_layout, self.knob_box, second_row_layout, bump_row_layout, self.graph_container]
 
+        # Combine both rows, knob box, and graph container into a VBox layout
         self.full_layout = VBox(
             full_column,
             layout=Layout(
@@ -591,11 +587,7 @@ class InteractiveTool():
         # Update UI components
         self.enable_widgets()
         self.update_knob_dropdown()
-
-        options_b1, _ = self.aperture_data.get_local_bump_knobs(self.plane)
-
-        self.mcb_dropdown.options = options_b1
-        self.mcb_dropdown.value = options_b1[0]
+        self.update_mcb_dropdown_by_line()
 
     def _load_aperture_data(self, path):
         """
@@ -806,6 +798,7 @@ class InteractiveTool():
         # Update the graph
         self.update_graph()
 
+    # TODO: move to utils
     def check_mismatches(self):
         # Loop through each widget in the dictionary
         for knob_name, widget in self.knob_widgets.items():
@@ -885,11 +878,12 @@ class InteractiveTool():
         self.knob_dropdown.options = self.aperture_data.knobs['knob'].to_list()
         if self.spark: self.ls_dropdown.options = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob]
 
-    def disable_first_row_controls(self):
+    # TODO: move to utils
+    def disable_knob_controls(self):
         """
         Disables first row controls
         """
-        filtered_buttons = [widget for widget in self.first_row_controls if isinstance(widget, Button)]
+        filtered_buttons = [widget for widget in self.knob_controls if isinstance(widget, Button)]
 
         for i in filtered_buttons:
             i.disabled = True
@@ -926,7 +920,7 @@ class InteractiveTool():
         else: 
             self.fig = make_subplots(rows=1, cols=1)
             self.row, self.col = 1, 1
-            self.disable_first_row_controls()
+            self.disable_knob_controls()
             self.disable_bump_row_controls()
             if self.spark: self.disable_spark_controls()
 
