@@ -43,6 +43,7 @@ class ApertureData:
 
         # Find knobs
         self._define_knobs()
+        self._define_acb_knobs()
 
         # Turn off all multipoles with order > 2 and relax the aperture to enable higher crossing angles
         self.turn_off_multipoles()
@@ -424,6 +425,24 @@ class ApertureData:
 
         # Return the collimators data
         return col
+
+    def _define_acb_knobs(self) -> None:
+        """
+        Create lists with knobs controling current of orbit correctors
+        """
+        # Vertical plane
+        self.acbv_knobs_b1 = [i for i in self.line_b1.vv.vars.keys() 
+            if 'acbv' in i and 'b1' in i and'x' not in i and 's' not in i]
+        
+        self.acbv_knobs_b2 = [i for i in self.line_b2.vv.vars.keys() 
+            if 'acbv' in i and 'b2' in i and 'x' not in i and 's' not in i]
+        
+        # Horizontal plane
+        self.acbh_knobs_b1 = [i for i in self.line_b1.vv.vars.keys() 
+            if 'acbh' in i and 'b1' in i and'x' not in i and 's' not in i]
+        
+        self.acbh_knobs_b2 = [i for i in self.line_b2.vv.vars.keys() 
+            if 'acbh' in i and 'b2' in i and 'x' not in i and 's' not in i]
     
     def load_elements(self, path: str) -> None:
         """
