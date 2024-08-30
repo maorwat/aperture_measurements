@@ -19,47 +19,36 @@ from aper_package.aperture_data import ApertureData
 class InteractiveTool():
     
     def __init__(self,
-                 line_b1_path: Optional[str] = None,
-                 line_b2_path: Optional[str] = None,
                  initial_path: Optional[str] = '/eos/project-c/collimation-team/machine_configurations/',
                  spark: Optional[Any] = None, 
-                 plane: Optional[str] = 'horizontal',
                  angle_range = (0, 800),
-                 number_of_knobs_per_line = 5,
-                 additional_traces: Optional[list] = None):
+                 number_of_knobs_per_line = 5):
         
         """
         Create and display an interactive plot with widgets for controlling and visualizing data.
 
         Parameters:
-            line_b1:
             initial_path: initial path for FileChoosers
             spark: SWAN spark session
-            additional_traces: List of additional traces to add to the plot.
         """
-        # If line was given load
-        if line_b1_path:
-            self.path_line = line_b1_path
-            if not line_b2_path and os.path.exists(str(line_b1_path).replace('b1', 'b2')): self.aperture_data = ApertureData(line_b1_path)
-            elif not line_b2_path and not os.path.exists(str(line_b1_path).replace('b1', 'b2')): print('Path for beam 2 not found. You can either provide it as an argument line_b2_path\nor load interactively from the graph')
-        else: self.path_line = None
-
+        # Initially, set all the paths to None
+        self.path_line = None
         self.path_aperture = None
         self.path_optics = None
 
-        self.additional_traces = additional_traces
         self.initial_path = initial_path
         # By default show horizontal plane first
-        self.plane = plane
+        self.plane = 'horizontal'
         self.spark = spark
         self.number_of_knobs_per_line = number_of_knobs_per_line
         self.angle_range = angle_range
         # Create and configure widgets
-        self.create_knob_controls()
-        self.create_acb_knobs()
-        self.create_options_controls()
         self.create_file_choosers()
+        self.create_options_controls()
+        self.create_knob_controls()
         self.create_local_bump_controls()
+        self.create_acb_knobs()
+        self.create_main_bump_controls()
         self.create_graph_container()
 
         # Put all the widgets together into a nice layout
@@ -148,7 +137,29 @@ class InteractiveTool():
         self.add_button.on_click(self.on_add_button_clicked)
         self.remove_button.on_click(self.on_remove_button_clicked)
         self.reset_button.on_click(self.on_reset_button_clicked)
-    
+
+    def update_knob_box(self):
+        """
+        Updates the layout of the knob_box with current knob widgets.
+        """
+        # Group the widgets into sets of three per row21840
+        rows = []
+        for i in range(0, len(self.selected_knobs), self.number_of_knobs_per_line):
+            row = HBox([self.knob_widgets[knob] for knob in self.selected_knobs[i:i+self.number_of_knobs_per_line]],
+                       layout=Layout(align_items='flex-start'))
+            rows.append(row)
+
+        # Update the knob_box with the new rows
+        self.knob_box.children = rows
+
+    def update_knob_dropdown(self):
+        """
+        Update the knob dropdown with a list of knobs read from loaded JSON file
+        """
+        # Create a dropdown to select a knob
+        self.knob_dropdown.options = self.aperture_data.knobs['knob'].to_list()
+        if self.spark: self.ls_dropdown.options = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob]
+
     def create_acb_knobs(self):
         """
         Initialises controls for adding a local bump by specifying currents for knobs
@@ -200,6 +211,7 @@ class InteractiveTool():
             tooltip='Reset all knobs to their default or nominal values.'
         )
 
+        # Group in a list for later
         self.acb_knob_controls = [self.acb_knob_dropdown, self.acb_add_button, self.acb_remove_button, self.acb_apply_button]
 
         # Assign function to buttons
@@ -287,10 +299,6 @@ class InteractiveTool():
             style={'description_width': 'initial'}, # Adjust the width of the description label
             layout=Layout(width='300px'))           # Set the width of the widget
 
-        # Create a float widget to specify envelope size
-        if hasattr(self, 'aperture_data'): n = self.aperture_data.n
-        else: n = 4
-
         self.envelope_input = FloatText(
                 value=4,                    # Initial value (4 sigma)
                 description='Envelope size [σ]:',    # Label for the widget 
@@ -309,37 +317,17 @@ class InteractiveTool():
             style=widgets.ButtonStyle(button_color='pink'), 
             tooltip='blah blah'
         )
-
-        self.options_controls = [self.cycle_input, self.envelope_input, self.plane_dropdown, self.apply_changes_button]
+        # Assign method to the button
         self.apply_changes_button.on_click(self.on_apply_changes_button_clicked)
 
+        # Group in a list for later
+        self.options_controls = [self.cycle_input, self.envelope_input, self.plane_dropdown, self.apply_changes_button]
+        
     def create_local_bump_controls(self):
         """
         Initialises controls for adding local bumb using line.match optimisation
-        """
-
-        # Select which beam you want to add the bump to
-        self.beam_dropdown = Dropdown(
-                    options=['beam 1', 'beam 2'],
-                    description='Select beam:',
-                    layout=Layout(width='300px'),
-                    disabled=False)
-
-        self.bump_plane_dropdown = Dropdown(
-                    options=['horizontal', 'vertical'],
-                    description='Select plane:',
-                    layout=Layout(width='300px'),
-                    disabled=False)
-        
-        self.remove_bumps_button = Button(
-                description="Remove all bumps", 
-                style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)')
-            )
-        
-        # Attach the update function to the first dropdown's 'value' attribute
-        self.beam_dropdown.observe(self.update_mcb_dropdown_by_beam, names='value')
-        self.bump_plane_dropdown.observe(self.update_mcb_dropdown_by_plane, names='value')
-        
+        Currently, does not work
+        """        
         # Select local bump location
         self.mcb_start_dropdown = Dropdown(
                     options=[],
@@ -375,10 +363,39 @@ class InteractiveTool():
                 style=widgets.ButtonStyle(button_color='pink')
             )
         
+        # Attach a method to the button
         self.add_bump_button.on_click(self.on_add_bump_button_clicked)
-        self.remove_bumps_button.on_click(self.on_remove_bumps_button_clicked)
-        self.main_bump_controls = [self.beam_dropdown, self.bump_plane_dropdown, self.remove_bumps_button]
+        # Group in a list for later
         self.bump_controls = [self.mcb_start_dropdown, self.mcb_end_dropdown, self.peak_element_input, self.bump_input, self.add_bump_button]
+
+    def create_main_bump_controls(self):
+
+                # Select which beam you want to add the bump to
+        self.beam_dropdown = Dropdown(
+                    options=['beam 1', 'beam 2'],
+                    description='Select beam:',
+                    layout=Layout(width='300px'),
+                    disabled=False)
+
+        self.bump_plane_dropdown = Dropdown(
+                    options=['horizontal', 'vertical'],
+                    description='Select plane:',
+                    layout=Layout(width='300px'),
+                    disabled=False)
+        
+        self.remove_bumps_button = Button(
+                description="Remove all bumps", 
+                style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)')
+            )
+        
+        # Attach a method to the button
+        self.remove_bumps_button.on_click(self.on_remove_bumps_button_clicked)
+
+        # Attach the update function to the first dropdown's 'value' attribute
+        self.beam_dropdown.observe(self.update_mcb_dropdown_by_beam, names='value')
+        self.bump_plane_dropdown.observe(self.update_mcb_dropdown_by_plane, names='value')
+        # Group in a list for later
+        self.main_bump_controls = [self.beam_dropdown, self.bump_plane_dropdown, self.remove_bumps_button]
 
     def on_remove_bumps_button_clicked(self, b):
         """
@@ -403,29 +420,29 @@ class InteractiveTool():
         self.aperture_data.add_local_bump(element, start_mcb, end_mcb, size, beam, plane)
         self.update_graph()
     
-    def update_mcb_dropdown(self, beam_selector, options_b1, options_b2):
+    def update_mcb_dropdown(self):
         """
         Method to update all local bump dropdowns options by plane and beam selected
         """
-        # Update dropdowns with mcb magnets
-        if beam_selector == 'beam 1':
-            self.mcb_start_dropdown.options = options_b1
-            self.mcb_start_dropdown.value = options_b1[0]
-            self.mcb_end_dropdown.options = options_b1
-            self.mcb_end_dropdown.value = options_b1[0]
-        elif beam_selector == 'beam 2':
-            self.mcb_start_dropdown.options = options_b2
-            self.mcb_start_dropdown.value = options_b2[0]
-            self.mcb_end_dropdown.options = options_b2
-            self.mcb_end_dropdown.value = options_b2[0]
-
         # Update dropdowns with acb knobs dropdowns
         if self.bump_plane_dropdown.value == 'horizontal': 
-            if self.beam_dropdown.value == 'beam 1': self.acb_knob_dropdown.options = self.aperture_data.acbh_knobs_b1['knob']
-            elif self.beam_dropdown.value == 'beam 2': self.acb_knob_dropdown.options = self.aperture_data.acbh_knobs_b2['knob']
+            if self.beam_dropdown.value == 'beam 1': 
+                self.acb_knob_dropdown.options = self.aperture_data.acbh_knobs_b1['knob']
+                self.mcb_start_dropdown.options = self.aperture_data.mcbh_b1
+                self.mcb_end_dropdown.options = self.aperture_data.mcbh_b1
+            elif self.beam_dropdown.value == 'beam 2': 
+                self.acb_knob_dropdown.options = self.aperture_data.acbh_knobs_b2['knob']
+                self.mcb_start_dropdown.options = self.aperture_data.mcbh_b2
+                self.mcb_end_dropdown.options = self.aperture_data.mcbh_b2
         if self.bump_plane_dropdown.value == 'vertical':
-            if self.beam_dropdown.value == 'beam 1': self.acb_knob_dropdown.options = self.aperture_data.acbv_knobs_b1['knob']
-            elif self.beam_dropdown.value == 'beam 2': self.acb_knob_dropdown.options = self.aperture_data.acbv_knobs_b2['knob']
+            if self.beam_dropdown.value == 'beam 1': 
+                self.acb_knob_dropdown.options = self.aperture_data.acbv_knobs_b1['knob']
+                self.mcb_start_dropdown.options = self.aperture_data.mcbv_b1
+                self.mcb_end_dropdown.options = self.aperture_data.mcbv_b1
+            elif self.beam_dropdown.value == 'beam 2': 
+                self.acb_knob_dropdown.options = self.aperture_data.acbv_knobs_b2['knob']
+                self.mcb_start_dropdown.options = self.aperture_data.mcbv_b2
+                self.mcb_end_dropdown.options = self.aperture_data.mcbv_b2
 
     def update_mcb_dropdown_by_beam(self, change):
         """
@@ -433,8 +450,7 @@ class InteractiveTool():
         """
         # Only run if line already loaded, they will be disabled either way
         if hasattr(self, 'aperture_data'):
-            options_b1, options_b2 = self.aperture_data.get_local_bump_knobs(self.bump_plane_dropdown.value)
-            self.update_mcb_dropdown(change['new'], options_b1, options_b2)
+            self.update_mcb_dropdown(change['new'])
 
     def update_mcb_dropdown_by_plane(self, change):
         """
@@ -442,25 +458,82 @@ class InteractiveTool():
         """
         # Only run if line already loaded
         if hasattr(self, 'aperture_data'):
-            options_b1, options_b2 = self.aperture_data.get_local_bump_knobs(self.bump_plane_dropdown.value)
-            self.update_mcb_dropdown(self.beam_dropdown.value, options_b1, options_b2)
+            self.update_mcb_dropdown()
 
-    def update_mcb_dropdown_by_line(self):
+    def create_time_widgets(self):
         """
-        Updates all dropdowns after the line is loaded
+        Create and configure date and time input widgets.
+
+        Returns:
+            Tuple[DatePicker, Text, List[DatePicker, Text]]: A tuple containing:
+                - DatePicker widget for selecting the date.
+                - Text widget for entering the time.
+                - A list containing both widgets.
         """
-        options_b1, options_b2 = self.aperture_data.get_local_bump_knobs(self.bump_plane_dropdown.value)
-        self.update_mcb_dropdown(self.beam_dropdown.value, options_b1, options_b2)
+
+        # Create date and time input widgets
+        self.date_picker = DatePicker(
+                description='Select Date:',
+                value=date.today(),            # Sets the default value to today's date
+                style={'description_width': 'initial'}, # Ensures the description width fits the content
+                layout=Layout(width='300px'))           # Sets the width of the widget
+
+        self.time_input = Text(
+                description='Enter Time (HH:MM:SS):',
+                value=datetime.now().strftime('%H:%M:%S'), # Sets the default value to the current time
+                placeholder='10:53:15',                 # Provides a placeholder text for the expected format
+                style={'description_width': 'initial'}, # Ensures the description width fits the content
+                layout=Layout(width='300px'))           # Sets the width of the widget
+     
+
+    def initialise_timber_data(self):
+        """
+        Initializes timber-related data and UI components if the `spark` attribute is provided.
+
+        This method sets up UI elements and data handlers for interacting with timber data. 
+        If the `spark`  Update UI components
+        Returns:
+            list: List of UI components related to timber data, or None if `spark` is not provided.
+        """
+        
+        # Only add timber buttons if spark given as an argument
+        if self.spark:
+
+            self.collimator_data = CollimatorsData(self.spark)
+            self.BPM_data = BPMData(self.spark)
+            
+            # Create buttons to load BPM and collimator data
+            self.load_BPMs_button = Button(
+                description="Load BPMs",
+                style=widgets.ButtonStyle(button_color='pink'),
+                tooltip='Load BPM data from timber for the specified time.'
+            )
+            self.load_BPMs_button.on_click(self.on_load_BPMs_button_clicked)
+
+            self.load_cols_button = Button(
+                description="Load collimators",
+                style=widgets.ButtonStyle(button_color='pink'),
+                tooltip='Load collimator data from timber for the specified time.'
+            )
+            self.load_cols_button.on_click(self.on_load_cols_button_clicked)
+
+            # Time selection widgets
+            self.create_time_widgets()
+
+            # Define layout depending if timber buttons present or not
+            timber_row_controls = [self.date_picker, self.time_input, self.load_cols_button, self.load_BPMs_button]
+            self.widgets += timber_row_controls
+
+        else: self.BPM_data, self.collimator_data, timber_row_controls = None, None, None
+            
+        return timber_row_controls
 
     def create_ls_controls(self):
         """
         Initialises controls for least squares fitting line into BPM data
         """
-        if self.spark:
-            # Dropdown to select a knob to vary
-            if hasattr(self, 'aperture_data'):
-                angle_knobs = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob and 'aux' not in knob] 
-            else: angle_knobs = []
+        if self.spark: 
+            angle_knobs = []
 
             # Dropdown to select whic angle to vary in the optimisation
             self.ls_dropdown = Dropdown(
@@ -517,17 +590,18 @@ class InteractiveTool():
         else: return None
 
     def on_ir_dropdown_change(self, change):
-
+        """
+        Handles event when ir dropdown was changed
+        """
         if change['new'] == 'other':
-            self.s_range_slider.disabled = True  # Disable the slider
+            self.s_range_slider.disabled = False  # Disable the slider
         else:
-            self.s_range_slider.disabled = False  # Enable the slider
+            self.s_range_slider.disabled = True  # Enable the slider
 
     def on_fit_button_clicked(self, b):
         """
         Handles event when button Fit to data is clicked
         """
-
         init_angle = self.init_angle_input.value
         knob = self.ls_dropdown.value
         ir=self.ir_dropdown.value
@@ -557,53 +631,11 @@ class InteractiveTool():
 
     def group_all_widgets(self):
 
-        # TODO!!
         # Group controls together
         self.widgets = self.file_chooser_controls+self.knob_controls+self.options_controls+self.main_bump_controls+self.bump_controls+self.acb_knob_controls     
-        self.timber_row_controls = self.initialise_timber_data() # If spark was not given this will return a None     
+        # If spark was not given this will return a None  
+        self.timber_row_controls = self.initialise_timber_data()    
         self.ls_row_controls = self.create_ls_controls()
-
-    def initialise_timber_data(self):
-        """
-        Initializes timber-related data and UI components if the `spark` attribute is provided.
-
-        This method sets up UI elements and data handlers for interacting with timber data. 
-        If the `spark`  Update UI components
-        Returns:
-            list: List of UI components related to timber data, or None if `spark` is not provided.
-        """
-        
-        # Only add timber buttons if spark given as an argument
-        if self.spark:
-
-            self.collimator_data = CollimatorsData(self.spark)
-            self.BPM_data = BPMData(self.spark)
-            
-            # Create buttons to load BPM and collimator data
-            self.load_BPMs_button = Button(
-                description="Load BPMs",
-                style=widgets.ButtonStyle(button_color='pink'),
-                tooltip='Load BPM data from timber for the specified time.'
-            )
-            self.load_BPMs_button.on_click(self.on_load_BPMs_button_clicked)
-
-            self.load_cols_button = Button(
-                description="Load collimators",
-                style=widgets.ButtonStyle(button_color='pink'),
-                tooltip='Load collimator data from timber for the specified time.'
-            )
-            self.load_cols_button.on_click(self.on_load_cols_button_clicked)
-
-            # Time selection widgets
-            self.create_time_widgets()
-
-            # Define layout depending if timber buttons present or not
-            timber_row_controls = [self.date_picker, self.time_input, self.load_cols_button, self.load_BPMs_button]
-            self.widgets += timber_row_controls
-
-        else: self.BPM_data, self.collimator_data, timber_row_controls = None, None, None
-            
-        return timber_row_controls
     
     def define_widget_layout(self):
         """
@@ -839,7 +871,7 @@ class InteractiveTool():
         # Update UI components
         self.enable_widgets()
         self.update_knob_dropdown()
-        self.update_mcb_dropdown_by_line()
+        self.update_mcb_dropdown()
 
     def _load_aperture_data(self, path):
         """
@@ -864,32 +896,6 @@ class InteractiveTool():
             self.aperture_data.load_elements(path)
         else:
             print_and_clear('You need to load a line first.')
-
-    def create_time_widgets(self):
-        """
-        Create and configure date and time input widgets.
-
-        Returns:
-            Tuple[DatePicker, Text, List[DatePicker, Text]]: A tuple containing:
-                - DatePicker widget for selecting the date.
-                - Text widget for entering the time.
-                - A list containing both widgets.
-        """
-
-        # Create date and time input widgets
-        self.date_picker = DatePicker(
-                description='Select Date:',
-                value=date.today(),            # Sets the default value to today's date
-                style={'description_width': 'initial'}, # Ensures the description width fits the content
-                layout=Layout(width='300px'))           # Sets the width of the widget
-
-        self.time_input = Text(
-                description='Enter Time (HH:MM:SS):',
-                value=datetime.now().strftime('%H:%M:%S'), # Sets the default value to the current time
-                placeholder='10:53:15',                 # Provides a placeholder text for the expected format
-                style={'description_width': 'initial'}, # Ensures the description width fits the content
-                layout=Layout(width='300px'))           # Sets the width of the widget
-     
 
     def handle_timber_loading(self, data_loader, data_type, update_condition):
         """
@@ -991,7 +997,6 @@ class InteractiveTool():
                 path_replacement={'b1': 'b2'},
                 load_function=self._load_line_data
             )
-            self.update_mcb_dropdown_by_line()
 
         if self.path_aperture != self.file_chooser_aperture.selected:
             self.path_aperture = self.file_chooser_aperture.selected
@@ -1050,7 +1055,6 @@ class InteractiveTool():
         # Update the graph
         self.update_graph()
 
-    # TODO: move to utils
     def check_mismatches(self):
         # Loop through each widget in the dictionary
         for knob_name, widget in self.knob_widgets.items():
@@ -1107,28 +1111,6 @@ class InteractiveTool():
 
             # Update selected knobs and display value
             self.update_knob_box()
-
-    def update_knob_box(self):
-        """
-        Updates the layout of the knob_box with current knob widgets.
-        """
-        # Group the widgets into sets of three per row21840
-        rows = []
-        for i in range(0, len(self.selected_knobs), self.number_of_knobs_per_line):
-            row = HBox([self.knob_widgets[knob] for knob in self.selected_knobs[i:i+self.number_of_knobs_per_line]],
-                       layout=Layout(align_items='flex-start'))
-            rows.append(row)
-
-        # Update the knob_box with the new rows
-        self.knob_box.children = rows
-
-    def update_knob_dropdown(self):
-        """
-        Update the knob dropdown with a list of knobs read from loaded JSON file
-        """
-        # Create a dropdown to select a knob
-        self.knob_dropdown.options = self.aperture_data.knobs['knob'].to_list()
-        if self.spark: self.ls_dropdown.options = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob]
 
     def disable_buttons(self):
         """
@@ -1216,14 +1198,6 @@ class InteractiveTool():
             self.fig = make_subplots(rows=1, cols=1)
             # Row and col for other traces
             self.row, self.col = 1, 1
-
-        # If any additional traces were given as an argument
-        if self.additional_traces:
-            # TODO: handle if not a list
-            for i in self.additional_traces:
-                self.fig.add_trace(i, row=self.row, col=self.col)
-                self.visibility_b1 = np.append(self.visibility_b1, True)
-                self.visibility_b2 = np.append(self.visibility_b2, True)
 
         # If there is aperture data
         if hasattr(self.aperture_data, 'aper_b1'):

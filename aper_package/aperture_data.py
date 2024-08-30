@@ -45,6 +45,7 @@ class ApertureData:
         # Find knobs
         self._define_knobs()
         self._define_acb_knobs()
+        self._define_mcbs()
 
         # Turn off all multipoles with order > 2 and relax the aperture to enable higher crossing angles
         self.turn_off_multipoles()
@@ -213,8 +214,14 @@ class ApertureData:
         return shift
 
     def turn_off_multipoles(self):
+        """
+        Disable high-order multipoles in the elements of line_b1 and line_b2.
 
-        # TODO: is there more efficient way to do that?
+        This method sets the `knl` and `ksl` arrays to zero for all 
+        `xt.Multipole` elements with an order greater than 2 in both `line_b1` 
+        and `line_b2`.
+        """
+
         for i, n in enumerate(self.line_b1.elements):
             if isinstance(n, xt.Multipole) and n.order>2:
                 n.knl.fill(0)
@@ -226,8 +233,13 @@ class ApertureData:
                 n.ksl.fill(0)
 
     def relax_aperture(self):
+        """
+        Relax the aperture constraints for elements in line_b1 and line_b2.
 
-        # TODO: make it better 
+        This method sets the aperture parameters `a_squ`, `b_squ`, `a_b_squ`, 
+        `max_x`, and `max_y` to 1 for all `xt.LimitEllipse` and 
+        `xt.LimitRectEllipse` elements in both `line_b1` and `line_b2`.
+        """
         for i, n in enumerate(self.line_b1.elements):
             if isinstance(n, xt.LimitEllipse):
                 n.a_squ = 1
@@ -316,24 +328,39 @@ class ApertureData:
             knob: The name of the knob to be changed.
             value: The new value to set for the knob.
         """
-
+        # Set the new value for both lines
         self.line_b1.vars[knob] = value
         self.line_b2.vars[knob] = value
 
+        # Update the current value with the new value
         self.knobs.loc[self.knobs['knob'] == knob, 'current value'] = value
 
-    def change_acb_knob(self, knob, value, plane, beam):
+    def change_acb_knob(self, knob, value, plane, beam) -> None:
+        """
+        Update the specified knob to the given value for one beam lines.
+        Also update the corresponding entry in the knobs DataFrame.
 
-        self.line_b1.vars[knob] = value
-        self.line_b2.vars[knob] = value
+        Parameters:
+            knob: The name of the knob to be changed.
+            value: The new value to set for the knob.
+            plane: The plane to specify the dataframe with current and inital values 
+            beam: The beam to specify the dataframe with current and inital values 
+        """
 
+        # Specify which df to update
         if beam == 'beam 1':
+            line = self.line_b1
             if plane == 'horizontal': knobs_df = self.acbh_knobs_b1
             elif plane == 'vertical': knobs_df = self.acbv_knobs_b1
         elif beam == 'beam 2':
+            line = self.line_b2
             if plane == 'horizontal': knobs_df = self.acbh_knobs_b2
             elif plane == 'vertical': knobs_df = self.acbv_knobs_b2
 
+        # Set the new value
+        line.vars[knob] = value
+
+        # Update the current value with the new value
         knobs_df.loc[knobs_df['knob'] == knob, 'current value'] = value
 
     def reset_knobs(self) -> None:
@@ -354,7 +381,10 @@ class ApertureData:
         self.twiss()
     
     def reset_all_acb_knobs(self):
-
+        """
+        Resets the acb knobs to their initial values if they have been changed.
+        Then recalculates the twiss parameters.
+        """  
         self._reset_acb_knobs(self.acbh_knobs_b1)
         self._reset_acb_knobs(self.acbh_knobs_b2)
         self._reset_acb_knobs(self.acbv_knobs_b1)
@@ -365,8 +395,7 @@ class ApertureData:
 
     def _reset_acb_knobs(self, acb_knobs_df) -> None:
         """
-        Resets the knobs to their initial values if they have been changed.
-        Then recalculates the twiss parameters.
+        Helper method to reset the knobs to their initial values if they have been changed.
         """     
 
         # Iterate over the knobs DataFrame and reset values where necessary
@@ -439,9 +468,6 @@ class ApertureData:
 
         Returns:
             pd.DataFrame: A DataFrame with the collimator data, including calculated gaps.
-
-        Raises:
-            ValueError: If the beam or plane is not valid.
         """
 
         if beam == 'b1': twiss_data=self.tw_b1
@@ -467,7 +493,7 @@ class ApertureData:
 
     def _define_acb_knobs(self) -> None:
         """
-        Create lists with knobs controling current of orbit correctors
+        Create dataframes with knobs controling current of orbit correctors
         """
         # Vertical plane
         self.acbv_knobs_b1 = self._create_acb_knob_df(r'acb.*v.*b1$', self.line_b1)
@@ -477,17 +503,18 @@ class ApertureData:
         self.acbh_knobs_b1 = self._create_acb_knob_df(r'acb.*h.*b1$', self.line_b1)
         self.acbh_knobs_b2 = self._create_acb_knob_df(r'acb.*h.*b2$', self.line_b2)
 
-        self.all_acb_knobs = self.acbh_knobs_b1['knob'].tolist()+self.acbh_knobs_b2['knob'].tolist()+self.acbv_knobs_b1['knob'].tolist()+self.acbv_knobs_b2['knob'].tolist()
-    
     def _create_acb_knob_df(self, search_string, line):
+        """
+        Creates data frames with acb knobs and their values for given plane and beam 
+        """
 
-        knobs = [i for i in line.vv.vars.keys() if re.search(search_string, i)]
+        knobs = [i for i in line.vv.vars.keys() if re.search(search_string, i)] 
         values = [line.vv.get(knob) for knob in knobs]
 
         df = pd.DataFrame({
-            'knob': knobs,
-            'initial value': values,
-            'current value': values
+            'knob': knobs, # Knob names
+            'initial value': values, # Initial values for resetting
+            'current value': values # Current values
         })
 
         return df
@@ -506,19 +533,20 @@ class ApertureData:
         # Make sure the elements align with twiss data (if cycling was performed)
         self.elements = match_with_twiss(self.tw_b1, df)
 
-    def get_local_bump_knobs(self, plane: str):
+    def _define_mcbs(self):
         """
         Creates lists of mcb orbit correctors for each beam for given plane
         """
-        if plane == 'horizontal': key = 'mcb.*h.*b[12]$' #'mcbh'
-        elif plane == 'vertical': key = 'mcb.*v.*b[12]$' #'mcbv'
 
-        mcb_b1 = [element for element in list(self.line_b1.element_names) 
-                if re.search(key,element)]
-        mcb_b2 = [element for element in list(self.line_b2.element_names)
-                if re.search(key,element)]
-
-        return mcb_b1, mcb_b2
+        self.mcbh_b1 = [element for element in list(self.line_b1.element_names) 
+                if re.search('mcb.*h.*b1$',element)]
+        self.mcbh_b2 = [element for element in list(self.line_b2.element_names)
+                if re.search('mcb.*h.*b2$',element)]
+        
+        self.mcbv_b1 = [element for element in list(self.line_b1.element_names) 
+                if re.search('mcb.*v.*b1$',element)]
+        self.mcbv_b2 = [element for element in list(self.line_b2.element_names)
+                if re.search('mcb.*v.*b2$',element)]
 
     def add_local_bump(self, 
                        element: str, 
@@ -531,6 +559,7 @@ class ApertureData:
         """
         Adds a 3C or 4C local bump to line using optimisation line.match
         """
+        #TODO: DOESNT WORK
         if beam == 'beam 1': line = self.line_b1
         elif beam == 'beam 2': line = self.line_b2
 
@@ -583,13 +612,15 @@ class ApertureData:
 
     def get_ir_boundries(self, ir):
         """
-        Mathod to get the boundries of IRs
+        Mathod to get the boundries of IRs, returns a position range in metres
         """
-        number = ir[-1] #last element in the string is the number
+        number = ir[-1] #last element in the string is the number of the ir
 
+        # Construct element names corresponding to start and end of an ir
         start = 's.ds.l'+number+'.b1'
         end = 'e.ds.r'+number+'.b1'
 
+        # Define the range by searching the elements in twiss data
         s_range = (self.tw_b1[self.tw_b1['name']==start]['s'].values[0], self.tw_b1[self.tw_b1['name']==end]['s'].values[0])
 
         return s_range
