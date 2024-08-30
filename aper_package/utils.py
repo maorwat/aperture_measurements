@@ -1,5 +1,7 @@
 import pandas as pd
+import xtrack as xt
 import tkinter as tk
+import numpy as np
 from tkinter import filedialog
 import os
 
@@ -86,3 +88,39 @@ def reverse_transform_string(s):
     original = f"{prefix}{part1}{part2[:2]}.{part2[2:]}{part3}"
     
     return original
+
+def matchSummary(opt):
+    for tt in opt._err.targets:
+        if tt.line:
+            nn = " ".join((tt.line,) + tt.tar)
+            rr = tt.action.run()[tt.line][tt.tar]
+        else:
+            nn = tt.tar
+            rr = tt.action.run()[tt.tar]
+        if type(tt.value) == xt.match.LessThan:
+            vv = tt.value.upper
+            dd = rr - vv
+            print(f"{nn:25}: {rr:15.7e} {vv:15.7e} d={dd:15.7e} {rr<(vv+tt.tol)}")
+        elif type(tt.value) == xt.match.GreaterThan:
+            vv = tt.value.lower
+            dd = rr - vv
+            print(f"{nn:25}: {rr:15.7e} {vv:15.7e} d={dd:15.7e} {rr>(vv-tt.tol)}")
+        elif hasattr(tt, "rhs"):
+            vv = tt.rhs
+            dd = rr - vv
+            if tt.ineq_sign == ">":
+                print(f"{nn:25}: {rr:15.7e} {vv:15.7e} d={dd:15.7e} {rr>(vv-tt.tol)}")
+            else:
+                print(f"{nn:25}: {rr:15.7e} {vv:15.7e} d={dd:15.7e} {rr<(vv+tt.tol)}")
+        else:
+            vv = tt.value
+            dd = rr - vv
+            dd = np.abs(dd)
+            try:
+                nn = " ".join(nn)
+            except:
+                nn = tt.tar
+            try:
+                print(f"{nn:25}: {rr:15.7e} {vv:15.7e} d={dd:15.7e} {dd<tt.tol}")
+            except:
+                return [nn,rr,vv,dd,tt.tol]

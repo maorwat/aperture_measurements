@@ -403,9 +403,10 @@ class InteractiveTool():
         element = self.peak_element_input.value
         start_mcb= self.mcb_start_dropdown.value
         end_mcb = self.mcb_end_dropdown.value
+        plane = self.bump_plane_dropdown.value
 
         # Add bump and update graph
-        self.aperture_data.add_local_bump(element, start_mcb, end_mcb, size, beam, self.plane)
+        self.aperture_data.add_local_bump(element, start_mcb, end_mcb, size, beam, plane)
         self.update_graph()
     
     def update_mcb_dropdown(self, beam_selector, options_b1, options_b2):
@@ -481,6 +482,16 @@ class InteractiveTool():
                     style={'description_width': 'initial'}, # Adjust the width of the description label
                     layout=Layout(width='150px'))           # Set the width of the widget
 
+            # Dropdown to select IR for fitting
+            self.ir_dropdown = Dropdown(
+                    options=['IR1', 'IR2', 'IR3', 'IR4', 'IR5', 'IR6', 'IR7', 'IR8', 'other'],
+                    description='Select knob:',
+                    layout=Layout(width='200px'),
+                    disabled=False)
+
+            # Attach the observe function to the dropdown
+            self.ir_dropdown.observe(self.on_ir_dropdown_change, names='value')
+
             # Range slider to specify s
             self.s_range_slider = widgets.FloatRangeSlider(
                     value=[0, 26658],
@@ -504,26 +515,41 @@ class InteractiveTool():
             self.result_output = widgets.Output()
 
             # Group controls and append to all widgets
-            ls_row_controls = [self.ls_dropdown, self.init_angle_input, self.s_range_slider, self.fit_button, self.result_output]
+            ls_row_controls = [self.ls_dropdown, self.init_angle_input, self.ir_dropdown, self.s_range_slider, self.fit_button, self.result_output]
             self.widgets += ls_row_controls
 
             return ls_row_controls
             
         else: return None
 
+    def on_ir_dropdown_change(self, change):
+
+        if change['new'] == 'other':
+            self.s_range_slider.disabled = True  # Disable the slider
+        else:
+            self.s_range_slider.disabled = False  # Enable the slider
+
     def on_fit_button_clicked(self, b):
+        """
+        Handles event when button Fit to data is clicked
+        """
 
         init_angle = self.init_angle_input.value
         knob = self.ls_dropdown.value
-        s_range=self.s_range_slider.value
+        ir=self.ir_dropdown.value
+        
+        if ir == 'other': s_range = self.s_range_slider.value
+        else: s_range = self.aperture_data.get_ir_boundries(ir)        
 
-        self.best_fit_angle, self.best_fit_uncertainty = self.BPM_data.least_squares_fit(self.aperture_data, init_angle, knob, self.plane, self.angle_range, s_range)
+        if s_range[0]>s_range[1]: print_and_clear('Try cycling the graph first so that the IR is not on the edge.')
+        else: 
+            self.best_fit_angle, self.best_fit_uncertainty = self.BPM_data.least_squares_fit(self.aperture_data, init_angle, knob, self.plane, self.angle_range, s_range)
 
-        with self.result_output:
-            self.result_output.clear_output()  # Clear previous output
-            print(f'Best fit angle: {self.best_fit_angle} Uncertainty: {self.best_fit_uncertainty}')
+            with self.result_output:
+                self.result_output.clear_output()  # Clear previous output
+                print(f'Best fit angle: {self.best_fit_angle} Uncertainty: {self.best_fit_uncertainty}')
 
-        self.update_graph()
+            self.update_graph()
 
     def create_graph_container(self):
 
@@ -659,7 +685,7 @@ class InteractiveTool():
                 border='solid 2px #ccc')) 
         
         local_bump_vbox = VBox(
-            [main_bump_row_layout, bump_row_layout, acb_row_layout, self.acb_knob_box],
+            [main_bump_row_layout, acb_row_layout, self.acb_knob_box],
             layout=Layout(
                 justify_content='space-around', # Distribute space evenly
                 align_items='center',           # Center align all items
@@ -1311,3 +1337,5 @@ class InteractiveTool():
                                                     method="update",
                                   
                                                     args=[{"visible": self.visibility_both}])]))])
+            
+

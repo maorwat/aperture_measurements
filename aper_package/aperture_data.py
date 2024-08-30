@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import tfs
 import yaml
+import re
 
 from typing import Any, Dict, Optional
  
@@ -150,7 +151,7 @@ class ApertureData:
         twiss_df = twiss_df[~twiss_df['name'].str.contains('aper|drift')]
 
         # Select necessary columns
-        return twiss_df[['s', 'name', 'x', 'y', 'betx', 'bety']]
+        return twiss_df[['s', 'name', 'x', 'y', 'betx', 'bety', 'px', 'py']]
 
     def _distance_to_nominal(self, plane: str) -> None:
         """
@@ -432,17 +433,17 @@ class ApertureData:
         """
         # Vertical plane
         self.acbv_knobs_b1 = [i for i in self.line_b1.vv.vars.keys() 
-            if 'acbv' in i and 'b1' in i and'x' not in i and 's' not in i]
+                                if re.search(r'acb.*v.*b1$', i)]
         
         self.acbv_knobs_b2 = [i for i in self.line_b2.vv.vars.keys() 
-            if 'acbv' in i and 'b2' in i and 'x' not in i and 's' not in i]
+                                if re.search(r'acb.*v.*b2$', i)]
         
         # Horizontal plane
         self.acbh_knobs_b1 = [i for i in self.line_b1.vv.vars.keys() 
-            if 'acbh' in i and 'b1' in i and'x' not in i and 's' not in i]
+                                if re.search(r'acb.*h.*b1$', i)]
         
         self.acbh_knobs_b2 = [i for i in self.line_b2.vv.vars.keys() 
-            if 'acbh' in i and 'b2' in i and 'x' not in i and 's' not in i]
+                                if re.search(r'acb.*h.*b2$', i)]
     
     def load_elements(self, path: str) -> None:
         """
@@ -459,14 +460,16 @@ class ApertureData:
         self.elements = match_with_twiss(self.tw_b1, df)
 
     def get_local_bump_knobs(self, plane: str):
+        """
+        Creates lists of mcb orbit correctors for each beam for given plane
+        """
+        if plane == 'horizontal': key = 'mcb.*h.*b[12]$' #'mcbh'
+        elif plane == 'vertical': key = 'mcb.*v.*b[12]$' #'mcbv'
 
-        if plane == 'horizontal': key = 'mcbh'
-        elif plane == 'vertical': key = 'mcbv'
-    
         mcb_b1 = [element for element in list(self.line_b1.element_names) 
-                if key in element and 'aper' not in element and 'mke' not in element]
+                if re.search(key,element)]
         mcb_b2 = [element for element in list(self.line_b2.element_names)
-                if key in element and 'aper' not in element and 'mke' not in element]
+                if re.search(key,element)]
 
         return mcb_b1, mcb_b2
 
@@ -478,42 +481,68 @@ class ApertureData:
                        beam: str,
                        plane: str):
 
+        """
+        Adds a 3C or 4C local bump to line using optimisation line.match
+        """
         if beam == 'beam 1': line = self.line_b1
         elif beam == 'beam 2': line = self.line_b2
 
         # Find the indices of the start and end elements
         start_index = line.element_names.index(start_mcb)
         end_index = line.element_names.index(end_mcb)
+
+        if plane == 'horizontal': key = 'mcb.*h.*b[12]$'#'mcbh'
+        elif plane == 'vertical': key = 'mcb.*v.*b[12]$'#'mcbv'
         
         # In case the elements were selected in the wrong order
         elements_between = list(line.element_names[start_index:end_index + 1])
         if len(elements_between) == 0: elements_between = list(line.element_names[end_index:start_index + 1])
         
-        relevant_mcbs = [element for element in elements_between if 'mcbv' in element and 'aper' not in element and 'mke' not in element]
+        relevant_mcbs = [element for element in list(elements_between) if re.search(key,element)]
+        print(relevant_mcbs)
         mcb_count = len(relevant_mcbs)
+        print(mcb_count)
         
-        if mcb_count == 3 or 4:
+        if mcb_count == 3 or mcb_count == 4:
 
             print_and_clear(f'Applying a {mcb_count}C-bump...')
+            tw0 = line.twiss()
 
-            varylist = [reverse_transform_string(element) for element in relevant_mcbs]
-        
             if plane == 'vertical':
-                target1 = xt.Target(y=0, at=relevant_mcbs[0])
+                target1 = xt.TargetSet(['y','py'], value=tw0, at=relevant_mcbs[0])
                 target2 = xt.Target(y=size/1000, at=element)
-                target3 = xt.Target(y=0, at=relevant_mcbs[-1])
+                target3 = xt.TargetSet(['y','py'], value=tw0, at=relevant_mcbs[-1])
+                # Get knobs that control relevant mcb elements
+                vars_list = [str(line.element_refs[element].ksl[0]._expr) for element in relevant_mcbs]
+                varylist = [re.search(r"vars\['(.*?)'\]", expr).group(1) for expr in vars_list]
             elif plane == 'horizontal':
-                target1 = xt.Target(x=0, at=relevant_mcbs[0])
+                target1 = xt.TargetSet(['x','px'], value=tw0, at=relevant_mcbs[0])
                 target2 = xt.Target(x=size/1000, at=element)
-                target3 = xt.Target(x=0, at=relevant_mcbs[-1])
+                target3 = xt.TargetSet(['x','px'], value=tw0, at=relevant_mcbs[-1])
+                vars_list = [str(line.element_refs[element].knl[0]._expr) for element in relevant_mcbs]
+                varylist = [re.search(r"vars\['(.*?)'\]", expr).group(1) for expr in vars_list]
                 
             targets = [target1, target2, target3]
+            try:
+                self.opt = line.match(
+                    vary=xt.VaryList(varylist, step=1e-8),
+                    targets = targets)
+                
+                self.twiss()
+                print(self.opt.get_knob_values())
+            except Exception as e: print(e)
             
-            self.opt = line.match(
-                vary=xt.VaryList(varylist, step=1e-8),
-                targets = targets)
-            
-            self.twiss()
-            print(self.opt.get_knob_values())
-        
         else: print_and_clear('Wrong mcbs, retry')
+
+    def get_ir_boundries(self, ir):
+        """
+        Mathod to get the boundries of IRs
+        """
+        number = ir[-1] #last element in the string is the number
+
+        start = 's.ds.l'+number+'.b1'
+        end = 'e.ds.r'+number+'.b1'
+
+        s_range = (self.tw_b1[self.tw_b1['name']==start]['s'].values[0], self.tw_b1[self.tw_b1['name']==end]['s'].values[0])
+
+        return s_range
