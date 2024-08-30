@@ -213,7 +213,7 @@ class InteractiveTool():
         """
         try:
             for knob, widget in self.acb_widgets.items():
-                self.aperture_data.change_knob(knob, widget.value)
+                self.aperture_data.change_acb_knob(knob, widget.value, self.bump_plane_dropdown.value, self.beam_dropdown.value)
 
             # Re-twiss
             self.aperture_data.twiss()
@@ -384,13 +384,7 @@ class InteractiveTool():
         """
         Handles event of clicking Remove all bumps button
         """
-        # Iterate over all current knobs
-        for i in self.aperture_data.acbv_knobs_b1+self.aperture_data.acbv_knobs_b2+self.aperture_data.acbh_knobs_b1+self.aperture_data.acbh_knobs_b2:
-            # Set to 0
-            self.aperture_data.line_b1.vars[i] = 0
-            self.aperture_data.line_b2.vars[i] = 0
-        # Set to 0 and update
-        self.aperture_data.twiss()
+        self.aperture_data.reset_all_acb_knobs()
         self.update_graph()
 
     def on_add_bump_button_clicked(self, b):
@@ -427,11 +421,11 @@ class InteractiveTool():
 
         # Update dropdowns with acb knobs dropdowns
         if self.bump_plane_dropdown.value == 'horizontal': 
-            if self.beam_dropdown.value == 'beam 1': self.acb_knob_dropdown.options = self.aperture_data.acbh_knobs_b1
-            elif self.beam_dropdown.value == 'beam 2': self.acb_knob_dropdown.options = self.aperture_data.acbh_knobs_b2
+            if self.beam_dropdown.value == 'beam 1': self.acb_knob_dropdown.options = self.aperture_data.acbh_knobs_b1['knob']
+            elif self.beam_dropdown.value == 'beam 2': self.acb_knob_dropdown.options = self.aperture_data.acbh_knobs_b2['knob']
         if self.bump_plane_dropdown.value == 'vertical':
-            if self.beam_dropdown.value == 'beam 1': self.acb_knob_dropdown.options = self.aperture_data.acbv_knobs_b1
-            elif self.beam_dropdown.value == 'beam 2': self.acb_knob_dropdown.options = self.aperture_data.acbv_knobs_b2
+            if self.beam_dropdown.value == 'beam 1': self.acb_knob_dropdown.options = self.aperture_data.acbv_knobs_b1['knob']
+            elif self.beam_dropdown.value == 'beam 2': self.acb_knob_dropdown.options = self.aperture_data.acbv_knobs_b2['knob']
 
     def update_mcb_dropdown_by_beam(self, change):
         """

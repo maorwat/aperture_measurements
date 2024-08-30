@@ -322,6 +322,20 @@ class ApertureData:
 
         self.knobs.loc[self.knobs['knob'] == knob, 'current value'] = value
 
+    def change_acb_knob(self, knob, value, plane, beam):
+
+        self.line_b1.vars[knob] = value
+        self.line_b2.vars[knob] = value
+
+        if beam == 'beam 1':
+            if plane == 'horizontal': knobs_df = self.acbh_knobs_b1
+            elif plane == 'vertical': knobs_df = self.acbv_knobs_b1
+        elif beam == 'beam 2':
+            if plane == 'horizontal': knobs_df = self.acbh_knobs_b2
+            elif plane == 'vertical': knobs_df = self.acbv_knobs_b2
+
+        knobs_df.loc[knobs_df['knob'] == knob, 'current value'] = value
+
     def reset_knobs(self) -> None:
         """
         Resets the knobs to their initial values if they have been changed.
@@ -338,6 +352,30 @@ class ApertureData:
 
         # Recalculate the twiss parameters    
         self.twiss()
+    
+    def reset_all_acb_knobs(self):
+
+        self._reset_acb_knobs(self.acbh_knobs_b1)
+        self._reset_acb_knobs(self.acbh_knobs_b2)
+        self._reset_acb_knobs(self.acbv_knobs_b1)
+        self._reset_acb_knobs(self.acbv_knobs_b2)
+
+        # Recalculate the twiss parameters    
+        self.twiss()
+
+    def _reset_acb_knobs(self, acb_knobs_df) -> None:
+        """
+        Resets the knobs to their initial values if they have been changed.
+        Then recalculates the twiss parameters.
+        """     
+
+        # Iterate over the knobs DataFrame and reset values where necessary
+        changed_knobs = acb_knobs_df[acb_knobs_df['current value'] != acb_knobs_df['initial value']]
+
+        for _, row in changed_knobs.iterrows():
+            self.change_knob(row['knob'], row['initial value'])
+            # Update the 'current value' to reflect the reset
+            acb_knobs_df.at[row.name, 'current value'] = row['initial value']
 
     def load_aperture(self, path_b1: str, path_b2: Optional[str]=None) -> None:
         # Load and process aperture data
@@ -432,18 +470,27 @@ class ApertureData:
         Create lists with knobs controling current of orbit correctors
         """
         # Vertical plane
-        self.acbv_knobs_b1 = [i for i in self.line_b1.vv.vars.keys() 
-                                if re.search(r'acb.*v.*b1$', i)]
-        
-        self.acbv_knobs_b2 = [i for i in self.line_b2.vv.vars.keys() 
-                                if re.search(r'acb.*v.*b2$', i)]
-        
+        self.acbv_knobs_b1 = self._create_acb_knob_df(r'acb.*v.*b1$', self.line_b1)
+        self.acbv_knobs_b2 = self._create_acb_knob_df(r'acb.*v.*b2$', self.line_b2)
+
         # Horizontal plane
-        self.acbh_knobs_b1 = [i for i in self.line_b1.vv.vars.keys() 
-                                if re.search(r'acb.*h.*b1$', i)]
-        
-        self.acbh_knobs_b2 = [i for i in self.line_b2.vv.vars.keys() 
-                                if re.search(r'acb.*h.*b2$', i)]
+        self.acbh_knobs_b1 = self._create_acb_knob_df(r'acb.*h.*b1$', self.line_b1)
+        self.acbh_knobs_b2 = self._create_acb_knob_df(r'acb.*h.*b2$', self.line_b2)
+
+        self.all_acb_knobs = self.acbh_knobs_b1['knob'].tolist()+self.acbh_knobs_b2['knob'].tolist()+self.acbv_knobs_b1['knob'].tolist()+self.acbv_knobs_b2['knob'].tolist()
+    
+    def _create_acb_knob_df(self, search_string, line):
+
+        knobs = [i for i in line.vv.vars.keys() if re.search(search_string, i)]
+        values = [line.vv.get(knob) for knob in knobs]
+
+        df = pd.DataFrame({
+            'knob': knobs,
+            'initial value': values,
+            'current value': values
+        })
+
+        return df
     
     def load_elements(self, path: str) -> None:
         """
