@@ -335,7 +335,7 @@ class ApertureData:
         # Update the current value with the new value
         self.knobs.loc[self.knobs['knob'] == knob, 'current value'] = value
 
-    def change_acb_knob(self, knob, value, plane, beam) -> None:
+    def change_acb_knob(self, knob, value, beam) -> None:
         """
         Update the specified knob to the given value for one beam lines.
         Also update the corresponding entry in the knobs DataFrame.
@@ -350,12 +350,12 @@ class ApertureData:
         # Specify which df to update
         if beam == 'beam 1':
             line = self.line_b1
-            if plane == 'horizontal': knobs_df = self.acbh_knobs_b1
-            elif plane == 'vertical': knobs_df = self.acbv_knobs_b1
+            if 'h' in knob: knobs_df = self.acbh_knobs_b1
+            elif 'v' in knob: knobs_df = self.acbv_knobs_b1
         elif beam == 'beam 2':
             line = self.line_b2
-            if plane == 'horizontal': knobs_df = self.acbh_knobs_b2
-            elif plane == 'vertical': knobs_df = self.acbv_knobs_b2
+            if 'h' in knob: knobs_df = self.acbh_knobs_b2
+            elif 'v' in knob: knobs_df = self.acbv_knobs_b2
 
         # Set the new value
         line.vars[knob] = value
@@ -426,8 +426,8 @@ class ApertureData:
         if not path_b2: path_b2 = str(path_b1).replace('B1', 'B4')
 
         # Drop uneeded columns
-        df1 = tfs.read(path_b1)[['S', 'NAME', 'APER_1', 'APER_2']]
-        df2 = tfs.read(path_b2)[['S', 'NAME', 'APER_1', 'APER_2']]
+        df1 = tfs.read(path_b1)[['S', 'NAME', 'APER_1', 'APER_2', 'APER_3', 'APER_4']]
+        df2 = tfs.read(path_b2)[['S', 'NAME', 'APER_1', 'APER_2', 'APER_3', 'APER_4']]
         # Get rid of undefined values
         df1 = df1[(df1['APER_1'] < 0.2) & (df1['APER_1'] != 0) & (df1['APER_2'] < 0.2) & (df1['APER_2'] != 0)]
         df2 = df2[(df2['APER_1'] < 0.2) & (df2['APER_1'] != 0) & (df2['APER_2'] < 0.2) & (df2['APER_2'] != 0)]

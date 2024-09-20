@@ -3,6 +3,7 @@ import pandas as pd
 
 import plotly.graph_objects as go
 from typing import List, Tuple
+from aper_package.utils import merge_twiss_and_aper, print_and_clear, find_s_value
 
 def plot_BPM_data(data: object, 
                   plane: str, 
@@ -385,3 +386,110 @@ def add_velo(data: object) -> go.Scatter:
     trace = go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], mode='lines', line=dict(color='orange'), name='VELO')
 
     return trace
+
+def generate_2d_plot(element, beam, data, n, width=600, height=600):
+    
+    # Create the figure
+    fig = go.Figure()
+    
+    if beam == 'both': 
+        beam_center_trace_b1, envelope_trace_b1, aperture_trace_b1 = add_beam_trace(element, 'beam 1', data, n)
+        beam_center_trace_b2, envelope_trace_b2, aperture_trace_b2 = add_beam_trace(element, 'beam 2', data, n)
+        # Add scatter trace for beam center
+        fig.add_trace(beam_center_trace_b1)
+        fig.add_trace(envelope_trace_b1)
+        fig.add_trace(aperture_trace_b1)
+        fig.add_trace(beam_center_trace_b2)
+        fig.add_trace(envelope_trace_b2)
+        fig.add_trace(aperture_trace_b2)
+    else:
+        beam_center_trace, envelope_trace, aperture_trace = add_beam_trace(element, beam, data, n)
+
+        # Add scatter trace for beam center
+        fig.add_trace(beam_center_trace)
+        fig.add_trace(envelope_trace)
+        fig.add_trace(aperture_trace)
+
+    # Update layout for the figure with custom width and height
+    fig.update_layout(
+        plot_bgcolor='white',
+        xaxis_title='x [m]',
+        yaxis_title='y [m]',
+        showlegend=False,
+        width=width,  # Set the width of the figure
+        height=height  # Set the height of the figure
+    )
+    
+    # Add gridlines for both axes
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', zeroline=True, zerolinewidth=1, zerolinecolor='lightgrey')
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', zeroline=True, zerolinewidth=1, zerolinecolor='lightgrey')
+
+    # Set axis limits to -0.05 to 0.05 for both x and y axes
+    fig.update_xaxes(range=[-0.05, 0.05])
+    fig.update_yaxes(range=[-0.05, 0.05])
+
+    return go.FigureWidget(fig)
+
+def add_beam_trace(element, beam, data, n):
+
+    # Merging and filtering logic for beam 1 and beam 2
+    if beam == 'beam 1': 
+        twiss, aper = data.tw_b1, data.aper_b1
+        merged = merge_twiss_and_aper(twiss, aper)
+        color = 'rgba(0,0,255,1)'
+        color_fill = 'rgba(0,0,255,0.5)'
+    elif beam == 'beam 2': 
+        twiss, aper = data.tw_b2, data.aper_b2
+        merged = merge_twiss_and_aper(twiss, aper)
+        color = 'rgba(255,0,0,1)'
+        color_fill = 'rgba(255,0,0,0.5)'
+        
+    element_position = find_s_value(element, data)
+    # Filter the data for the given element
+    try:
+        filtered_df = merged.iloc[(merged['s'] - element_position).abs().idxmin()]
+    except:
+        print_and_clear('Incorrect element')
+        return
+    
+    beam_center_trace = go.Scatter(
+        x=[filtered_df['x']], 
+        y=[filtered_df['y']], 
+        mode='markers+lines', 
+        name='Beam center', 
+        hoverinfo='text',
+        text=['Beam center'],
+        line=dict(color=color)
+    )
+
+    # Extract rectangle coordinates
+    x0 = filtered_df['x'] - n * filtered_df['sigma_x']
+    x1 = filtered_df['x'] + n * filtered_df['sigma_x']
+    y0 = filtered_df['y'] - n * filtered_df['sigma_y']
+    y1 = filtered_df['y'] + n * filtered_df['sigma_y']
+    
+    # Define the rectangle corners as a scatter trace
+    envelope_trace = go.Scatter(
+        x=[x0, x1, x1, x0, x0],  # Close the rectangle by repeating x0 at the end
+        y=[y0, y0, y1, y1, y0],  # Close the rectangle by repeating y0 at the end
+        mode='lines',
+        line=dict(color=color, width=2),
+        fill='toself',  # To fill the shape (optional)
+        fillcolor=color_fill  # Example fill color with some transparency
+    )
+    
+    # Extract rectangle dimensions from APER_1 and APER_2
+    aper_x = filtered_df['APER_1']
+    aper_y = filtered_df['APER_2']
+    
+    # Define the rectangle corners as a scatter trace
+    aperture_trace = go.Scatter(
+        x=[-aper_x, aper_x, aper_x, -aper_x, -aper_x],  # Close the rectangle
+        y=[-aper_y, -aper_y, aper_y, aper_y, -aper_y],  # Close the rectangle
+        mode='lines',
+        line=dict(color='grey', width=2),
+        fill='toself',  # To close the shape
+        fillcolor='rgba(0, 0, 0, 0)'  # No fill
+    )
+    
+    return beam_center_trace, envelope_trace, aperture_trace

@@ -11,6 +11,27 @@ import ipywidgets as widgets
 
 from datetime import datetime, timezone, timedelta
 
+def find_s_value(name, data):
+    """
+    Finds a position of an element
+    """
+    # Normalize the input name to lowercase
+    name = name.lower()
+    df_list = [data.tw_b1, data.tw_b2, data.aper_b1, data.aper_b2]
+    
+    # Iterate through each dataframe in the list
+    for df in df_list:
+        # Standardize column names by converting them to lowercase
+        df.columns = df.columns.str.lower()
+        
+        # Check if the 'name' column contains the given name
+        if name in df['name'].str.lower().values:
+            # Return the corresponding 's' value
+            return df.loc[df['name'].str.lower() == name, 's'].values[0]
+    
+    # If name is not found in any dataframe
+    return None
+
 def shift_by(df, by, s):
     """
     shifts a graph by a given value
@@ -33,6 +54,28 @@ def shift_by(df, by, s):
     df = df.reset_index(drop=True)
 
     return df
+
+def merge_twiss_and_aper(twiss, aper):
+    # TODO: maybe use the function below rather than repeat the same thing
+
+    df1 = twiss
+    df2 = aper
+
+    # Convert both columns to lowercase
+    df1['name'] = df1['name'].str.lower()
+    df2['NAME'] = df2['NAME'].str.lower()
+
+    # Merge the DataFrames on the normalized 'name' column
+    merged_df = pd.merge(df1, df2, left_on='name', right_on='NAME')
+    # Optionally, you can drop the redundant 'NAME' column after merging
+    merged_df.drop(columns=['NAME'], inplace=True)
+    # Drop all rows with NaN values
+    merged_df.dropna(inplace=True)
+
+    # Reset the index and drop the old index column
+    merged_df.reset_index(drop=True, inplace=True)
+    
+    return merged_df
 
 def match_with_twiss(twiss, aper_to_match):
 
