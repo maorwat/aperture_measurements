@@ -388,13 +388,6 @@ class InteractiveTool():
             style={'description_width': 'initial'}, # Adjust the width of the description label
             layout=Layout(width='300px'))  
         
-        # Dropdown to select which beam will be visualised
-        self.beam_dropdown_2d_plot = Dropdown(
-                    options=['beam 1', 'beam 2', 'both'],
-                    description='Select beam:',
-                    layout=Layout(width='300px'),
-                    disabled=False)
-        
         # Button to generate a new plot
         self.generate_2d_plot_button = Button(
             description="Generate", 
@@ -412,20 +405,7 @@ class InteractiveTool():
         self.generate_2d_plot_button.on_click(self.generate_2d_plot_button_clicked)
         self.add_trace_to_2d_plot_button.on_click(self.add_trace_to_2d_plot_button_clicked)        
         
-        # Attach the action to the dropdown's 'observe' method
-        self.beam_dropdown_2d_plot.observe(self.on_beam_change)
-
         self.widgets += [self.generate_2d_plot_button, self.add_trace_to_2d_plot_button]
-
-    def on_beam_change(self, change):
-        """
-        Method to change between the beam 1 beam 2 cross-section
-        """
-        if change['type'] == 'change' and change['name'] == 'value':
-            beam = change['new']
-            if beam == 'beam 1': self.cross_section_container.children = [self.cross_section_b1]
-            elif beam == 'beam 2': self.cross_section_container.children = [self.cross_section_b2]
-            elif beam == 'both': self.cross_section_container.children = [self.cross_section_both]
 
     def add_trace_to_2d_plot_button_clicked(self, b):
         """
@@ -433,7 +413,6 @@ class InteractiveTool():
         """
         n = self.aperture_data.n
         element = self.element_input.value
-        beam = self.beam_dropdown_2d_plot.value
         
         # Update the cross-section attributes
         # Beam 1
@@ -450,10 +429,7 @@ class InteractiveTool():
         self.cross_section_both.add_trace(beam_center_trace_b2)
         self.cross_section_both.add_trace(envelope_trace_b2)
 
-        # Update the graph
-        if beam == 'beam 1': self.cross_section_container.children = [self.cross_section_b1]
-        elif beam == 'beam 2': self.cross_section_container.children = [self.cross_section_b2]
-        elif beam == 'both': self.cross_section_container.children = [self.cross_section_both]
+        self.cross_section_container.children = [self.cross_section_b1, self.cross_section_b2, self.cross_section_both]
     
     def generate_2d_plot_button_clicked(self, b):
         """
@@ -461,17 +437,14 @@ class InteractiveTool():
         """
         n = self.aperture_data.n
         element = self.element_input.value
-        beam = self.beam_dropdown_2d_plot.value
 
         print_and_clear('Generating the cross-section...')
         # Generate and store as attributes the cross-sctions
         self.cross_section_b1 = generate_2d_plot(element, 'beam 1', self.aperture_data, n, width=450, height=450)
         self.cross_section_b2 = generate_2d_plot(element, 'beam 2', self.aperture_data, n, width=450, height=450)
         self.cross_section_both = generate_2d_plot(element, 'both', self.aperture_data, n, width=450, height=450)
-        # Update the graph
-        if beam == 'beam 1': self.cross_section_container.children = [self.cross_section_b1]
-        elif beam == 'beam 2': self.cross_section_container.children = [self.cross_section_b2]
-        elif beam == 'both': self.cross_section_container.children = [self.cross_section_both]
+
+        self.cross_section_container.children = [self.cross_section_b1, self.cross_section_b2, self.cross_section_both]
         
     def on_remove_bumps_button_clicked(self, b):
         """
@@ -657,11 +630,11 @@ class InteractiveTool():
             border='solid 2px #eee'))
         
         self.cross_section_container = HBox(
-            [self.cross_section_b1],
+            [self.cross_section_b1, self.cross_section_b2, self.cross_section_both],
             layout=Layout(
             justify_content='center',
             align_items='center',
-            width='70%',
+            width='80%',
             padding='0px',
             border='solid 2px #eee'))
     
@@ -669,7 +642,6 @@ class InteractiveTool():
         """
         Define and arrange the layout of the widgets.
         """
-
         # Create layout for the first row of controls
         file_chooser_layout = HBox(
             self.file_chooser_controls,
@@ -702,16 +674,16 @@ class InteractiveTool():
         
         # Group main controls into a Vbox
         cross_section_vbox = VBox(
-            [self.element_input, self.beam_dropdown_2d_plot, self.generate_2d_plot_button, self.add_trace_to_2d_plot_button],
+            [widgets.HTML("<h4>Visualise cross-section at the specified element</h4>"), self.element_input, self.generate_2d_plot_button, self.add_trace_to_2d_plot_button],
             layout=Layout(
                 justify_content='space-around', # Distribute space evenly
                 align_items='center',           # Center align all items
-                width='100%',                   # Full width of the container
+                width='20%',                   # Full width of the container
                 padding='0px',                 # Add padding around controls
                 border='solid 2px #ccc'))       # Border around the HBox
         
         full_cross_section_box = HBox(
-            [self.cross_section_container, cross_section_vbox],
+            [cross_section_vbox, self.cross_section_container],
             layout=Layout(
                 justify_content='center',   # Center items horizontally, allowing space on sides
                 align_items='stretch',      # Avoid extra vertical space
@@ -723,10 +695,15 @@ class InteractiveTool():
 
         # Group main controls into a Vbox
         main_vbox = VBox(
-            [file_chooser_layout, first_row_layout, self.knob_box, second_row_layout],
+            [widgets.HTML("<h4>Select and load files</h4>"), 
+             file_chooser_layout,
+             widgets.HTML("<h4>Select and adjust knobs</h4>"), 
+             first_row_layout, 
+             self.knob_box, 
+             widgets.HTML("<h4>Change line and graph properties</h4>"), 
+             second_row_layout],
             layout=Layout(
                 justify_content='space-around', # Distribute space evenly
-                align_items='center',           # Center align all items
                 width='100%',                   # Full width of the container
                 padding='10px',                 # Add padding around controls
                 border='solid 2px #ccc'))       # Border around the HBox
@@ -760,11 +737,11 @@ class InteractiveTool():
 
         # Display the layout
         define_local_bump_box = widgets.VBox([
-            widgets.HTML("<h4>Define and Configure Bumps</h4>"),
+            widgets.HTML("<h4>Define and configure bumps</h4>"),
             define_bump_first_row_box,
             define_bump_box,
             self.main_bump_box,
-            widgets.HTML("<h4>Select Bumps for Final Calculation</h4>"),
+            widgets.HTML("<h4>Select bumps for final calculation</h4>"),
             final_controls_box,
             self.final_bump_container
         ], layout=widgets.Layout(
@@ -796,10 +773,12 @@ class InteractiveTool():
             
             # Group timber controls into a Vbox
             spark_vbox = VBox(
-            [timber_row_layout, ls_row_layout],
+            [widgets.HTML("<h4>Load collimator and BPM data</h4>"),
+             timber_row_layout, 
+             widgets.HTML("<h4>Perform least-squares fitting</h4>"),
+             ls_row_layout],
             layout=Layout(
                 justify_content='space-around', # Distribute space evenly
-                align_items='center',           # Center align all items
                 width='100%',                   # Full width of the container
                 padding='10px',                 # Add padding around controls
                 border='solid 2px #ccc'))       # Border around the HBox
@@ -868,7 +847,6 @@ class InteractiveTool():
             path_replacement: Dictionary for path replacement (e.g., {'b1': 'b2'}). If None, no replacement is done.
             load_function: The function to call to load the data.
         """
-
         if not path:
             print_and_clear('Please select a file by clicking the Select button.')
             return
@@ -1206,7 +1184,7 @@ class InteractiveTool():
         self.graph_container.children = [self.fig_widget]
 
     def show(self,
-             width: Optional[int] = 1600, 
+             width: Optional[int] = 2000, 
              height: Optional[int] = 600):
         
         self.width = width

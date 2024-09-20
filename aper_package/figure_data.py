@@ -412,6 +412,7 @@ def generate_2d_plot(element, beam, data, n, width=600, height=600):
 
     # Update layout for the figure with custom width and height
     fig.update_layout(
+        title=f'{beam} cross-section',
         plot_bgcolor='white',
         xaxis_title='x [m]',
         yaxis_title='y [m]',
