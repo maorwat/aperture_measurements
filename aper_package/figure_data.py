@@ -434,23 +434,45 @@ def add_beam_trace(element, beam, data, n):
 
     # Merging and filtering logic for beam 1 and beam 2
     if beam == 'beam 1': 
-        twiss, aper = data.tw_b1, data.aper_b1
-        merged = merge_twiss_and_aper(twiss, aper)
+        if hasattr(data, 'aper_b1'):
+            twiss, aper = data.tw_b1, data.aper_b1
+            merged = merge_twiss_and_aper(twiss, aper)
+        else: merged = data.tw_b1
         color = 'rgba(0,0,255,1)'
         color_fill = 'rgba(0,0,255,0.5)'
     elif beam == 'beam 2': 
-        twiss, aper = data.tw_b2, data.aper_b2
-        merged = merge_twiss_and_aper(twiss, aper)
+        if hasattr(data, 'aper_b2'):
+            twiss, aper = data.tw_b2, data.aper_b2
+            merged = merge_twiss_and_aper(twiss, aper)
+        else: merged = data.tw_b2
         color = 'rgba(255,0,0,1)'
         color_fill = 'rgba(255,0,0,0.5)'
         
     element_position = find_s_value(element, data)
+    merged = merged.reset_index(drop=True)
     # Filter the data for the given element
     try:
         filtered_df = merged.iloc[(merged['s'] - element_position).abs().idxmin()]
     except:
         print_and_clear('Incorrect element')
-        return
+        return go.Scatter(), go.Scatter(), go.Scatter()
+
+    if hasattr(data, 'aper_b1'):
+        # Extract rectangle dimensions from APER_1 and APER_2
+        aper_x = filtered_df['APER_1']
+        aper_y = filtered_df['APER_2']
+        
+        # Define the rectangle corners as a scatter trace
+        aperture_trace = go.Scatter(
+            x=[-aper_x, aper_x, aper_x, -aper_x, -aper_x],  # Close the rectangle
+            y=[-aper_y, -aper_y, aper_y, aper_y, -aper_y],  # Close the rectangle
+            mode='lines',
+            line=dict(color='grey', width=2),
+            fill='toself',  # To close the shape
+            fillcolor='rgba(0, 0, 0, 0)'  # No fill
+        )
+    # If aperture isn't loaded return an empty trace
+    else: aperture_trace = go.Scatter()
     
     beam_center_trace = go.Scatter(
         x=[filtered_df['x']], 
@@ -476,20 +498,6 @@ def add_beam_trace(element, beam, data, n):
         line=dict(color=color, width=2),
         fill='toself',  # To fill the shape (optional)
         fillcolor=color_fill  # Example fill color with some transparency
-    )
-    
-    # Extract rectangle dimensions from APER_1 and APER_2
-    aper_x = filtered_df['APER_1']
-    aper_y = filtered_df['APER_2']
-    
-    # Define the rectangle corners as a scatter trace
-    aperture_trace = go.Scatter(
-        x=[-aper_x, aper_x, aper_x, -aper_x, -aper_x],  # Close the rectangle
-        y=[-aper_y, -aper_y, aper_y, aper_y, -aper_y],  # Close the rectangle
-        mode='lines',
-        line=dict(color='grey', width=2),
-        fill='toself',  # To close the shape
-        fillcolor='rgba(0, 0, 0, 0)'  # No fill
     )
     
     return beam_center_trace, envelope_trace, aperture_trace

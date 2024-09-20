@@ -45,17 +45,20 @@ class InteractiveTool():
         self.cross_section_b1 = self.create_empty_cross_section()
         self.cross_section_b2 = self.create_empty_cross_section()
         self.cross_section_both = self.create_empty_cross_section()
+        # Create an empty list to store all of the widgets
+        self.widgets = []
         # Create and configure widgets
         self.create_file_choosers()
         self.create_options_controls()
         self.create_knob_controls()
         self.create_local_bump_controls()
         self.create_2d_plot_controls()
-        self.create_acb_knobs()
         self.create_graph_container()
+        self.initialise_timber_data() 
+        # Widgets for the least squares fit   
+        self.create_ls_controls()
 
         # Put all the widgets together into a nice layout
-        self.group_all_widgets()
         self.define_widget_layout()
 
     def create_file_choosers(self):
@@ -78,6 +81,7 @@ class InteractiveTool():
 
         # Group together
         self.file_chooser_controls = [line_chooser_with_label, aperture_chooser_with_label, optics_chooser_with_label]
+        self.widgets += self.file_chooser_controls
 
     def create_knob_controls(self):
         """
@@ -135,6 +139,7 @@ class InteractiveTool():
         )
 
         self.knob_controls = [self.knob_dropdown, self.add_button, self.remove_button, self.reset_button]
+        self.widgets += self.knob_controls
 
         # Assign function to buttons
         self.add_button.on_click(self.on_add_button_clicked)
@@ -164,117 +169,144 @@ class InteractiveTool():
         if self.spark: self.ls_dropdown.options = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob]
 
     def create_local_bump_controls(self):
+        """
+        Creates widgets necessary to add a local bump to the line.
+
+        Includes controls to define a bump using kicks given in urad from YASP and then to scale it.
+        """
         
         # Dictionary to hold all created bumps (key: bump_name, value: VBox containing bump details)
         self.bump_dict = {}
-        
-        # Dropdown to select the bump
-        self.bump_selection_dropdown = widgets.Dropdown(options=[], description="Select Bump", layout=widgets.Layout(width='200px'))
-
-        # Dropdown to select bump for final addition
-        self.final_bump_dropdown = widgets.Dropdown(options=[], description="Final Bump", layout=widgets.Layout(width='200px'))
         
         # Button to define a new bump
         self.define_bump_button = widgets.Button(description="Define a new bump", style=widgets.ButtonStyle(button_color='pink'))
         self.define_bump_button.on_click(self.define_bump)
 
-        # Dropdown to select the bump
+        # Button to remove al bumps
+        self.remove_bumps_button = Button(description="Remove all bumps", style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)'))
+        self.remove_bumps_button.on_click(self.on_remove_bumps_button_clicked)
+
+        # Dropdown to select the bump to which knobs will be added
         self.bump_selection_dropdown = widgets.Dropdown(options=[], description="Select Bump", layout=widgets.Layout(width='200px'))
 
         # Dropdown to select the knob
         self.bump_knob_dropdown = widgets.Dropdown(options=[], description="Knob", layout=widgets.Layout(width='200px'))
         
-        # Dropdown to select the knob
+        # Dropdown to select the plane 
+        # Used only to sort the knobs in the self.bump_knob_dropdown
         self.sort_knobs_plane_dropdown = widgets.Dropdown(options=['horizontal', 'vertical'], description="Plane", layout=widgets.Layout(width='200px'))
 
-        # Dropdown to select the knob
+        # Dropdown to select the beam
+        # Used only to sort the knobs in the self.bump_knob_dropdown
         self.sort_knobs_beam_dropdown = widgets.Dropdown(options=['beam 1', 'beam 2'], description="Beam", layout=widgets.Layout(width='200px'))
 
+        # Observe plane and beam dropdowns to sort
         self.sort_knobs_plane_dropdown.observe(self.update_bump_knob_dropdown, names='value')
         self.sort_knobs_beam_dropdown.observe(self.update_bump_knob_dropdown, names='value')
-        
-        # Dropdown to select bump for final addition
-        self.final_bump_dropdown = widgets.Dropdown(options=[], description="Final Bump", layout=widgets.Layout(width='200px'))
 
         # Button to add the selected knob
         self.add_bump_knob_button = widgets.Button(description="Add Knob", layout=widgets.Layout(width='150px'), style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'))
         self.add_bump_knob_button.on_click(self.add_knob)
 
+        # Create the main container that will hold all the dynamically added VBox widgets
+        self.main_bump_box = widgets.VBox([])
+
+        # Dropdown to select bump for final addition to the line and scaling
+        self.final_bump_dropdown = widgets.Dropdown(options=[], description="Final Bump", layout=widgets.Layout(width='200px'))
+        
+        # Button to add the selected bump to the final container
+        self.add_final_bump_button = widgets.Button(description="Add Bump", layout=widgets.Layout(width='150px'), style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'))
+        self.add_final_bump_button.on_click(self.add_final_bump)
+
+        # Container to hold bumps added to the final HBox with floats
+        self.final_bump_container = widgets.GridBox([], layout=widgets.Layout(grid_template_columns="repeat(4, 500px)", # 4 boxes each 500 px wide
+                                                                          width='100%'))
+
         # Button to apply operation
         self.bump_apply_button = widgets.Button(description="Apply", style=widgets.ButtonStyle(button_color='pink'), layout=widgets.Layout(width='150px'))
         self.bump_apply_button.on_click(self.apply_operation)
 
-        # Button to add the selected bump to the final container
-        self.add_final_bump_button = widgets.Button(description="Add Bump", layout=widgets.Layout(width='150px'), style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'))
-        self.add_final_bump_button.on_click(self.add_final_bump)
-        
-        # Create the main container that will hold all the dynamically added VBox widgets
-        self.main_bump_box = widgets.VBox([])
-        
-        # Container to hold bumps added to the final HBox with floats
-        self.final_bump_container = widgets.GridBox([], layout=widgets.Layout(grid_template_columns="repeat(4, 500px)", width='100%'))
+        # I'm only adding the widgets that need to be disabled initially
+        self.widgets += [self.define_bump_button, self.remove_bumps_button, self.add_bump_knob_button, self.add_final_bump_button, self.bump_apply_button]
         
     def define_bump(self, b):
+        """
+        Method to define a new bump with kicks
+        """
         bump_name = f"Bump {len(self.bump_dict) + 1}"  # Unique bump name
+        # Create a dropdown to specify to which beam the bump should be applied
         beam_dropdown = widgets.Dropdown(options=['beam 1', 'beam 2'], description=f'{bump_name}: Beam', layout=widgets.Layout(width='400px'), style={'description_width': '150px'})
 
-        # Container for knobs in a grid (4 knobs per row)
-        knob_container = widgets.GridBox([], layout=widgets.Layout(grid_template_columns="repeat(5, 400px)", width='100%'))
+        # Container for knobs in a grid
+        knob_container = widgets.GridBox([], layout=widgets.Layout(grid_template_columns="repeat(4, 400px)", width='100%')) # 4 boxes each 400 px wide
 
-        # Create the VBox for each bump (beam + knobs)
-        bump_vbox = widgets.VBox([beam_dropdown, knob_container], layout=widgets.Layout(width='100%', padding='10px', border='solid 2px #ccc'))
+        # Create the HBox for each bump (beam + knobs) 
+        bump_definition_vbox = widgets.HBox([beam_dropdown, knob_container], layout=widgets.Layout(width='100%', padding='10px', border='solid 2px #ccc'))
 
         # Add the new bump to the main box
-        self.main_bump_box.children += (bump_vbox,)
+        # Box with all the define bumps
+        self.main_bump_box.children += (bump_definition_vbox,)
 
         # Store the bump in the dictionary
         self.bump_dict[bump_name] = {
-            'vbox': bump_vbox,
+            'vbox': bump_definition_vbox,
             'knobs': knob_container,
             'added_knobs': [],  # List to track added knobs
             'float_inputs': []  # List to store float inputs for each knob
         }
 
         # Update the bump selection dropdown to include the new bump
+        # Dropdown to select where the selected knobs will be added
         self.bump_selection_dropdown.options = list(self.bump_dict.keys())
+        # Dropdown to select which bumps to apply to the line
         self.final_bump_dropdown.options = list(self.bump_dict.keys())  # Update the dropdown for the final section
         
-    # Function to add a knob to the selected bump
     def add_knob(self, b):
+        """
+        Method to add a knob to the bump definition
+        """
+        # Which bump to add the new knob to
         selected_bump = self.bump_selection_dropdown.value
-        if selected_bump in self.bump_dict:
-            knob_name = self.bump_knob_dropdown.value
+        # Get knob name from the dropdown selection
+        knob_name = self.bump_knob_dropdown.value
 
-            # Check if the knob is already added
-            if knob_name not in self.bump_dict[selected_bump]['added_knobs']:
-                float_input = widgets.FloatText(description=knob_name, layout=widgets.Layout(width='200px'))
-                remove_button = widgets.Button(description="Remove", style=widgets.ButtonStyle(button_color='rgb(249, 123, 114)'), layout=widgets.Layout(width='100px'))
+        # Check if the knob is already added
+        if knob_name not in self.bump_dict[selected_bump]['added_knobs']:
+            # Create a widget to specify the kick
+            float_input = widgets.FloatText(description=knob_name, layout=widgets.Layout(width='200px'))
+            # Button to remove the knob from the selected
+            remove_button = widgets.Button(description="Remove", style=widgets.ButtonStyle(button_color='rgb(249, 123, 114)'), layout=widgets.Layout(width='100px'))
 
-                # Function to remove the knob
-                def remove_knob(btn):
-                    # Remove the knob from the UI
-                    self.bump_dict[selected_bump]['knobs'].children = [
-                        child for child in self.bump_dict[selected_bump]['knobs'].children
-                        if child is not knob_hbox
+            # Function to remove the knob
+            def remove_knob(btn):
+                # Remove the knob from the UI
+                self.bump_dict[selected_bump]['knobs'].children = [
+                    child for child in self.bump_dict[selected_bump]['knobs'].children
+                    if child is not knob_hbox
                     ]
-                    # Remove the knob from the added_knobs list and float_inputs
-                    self.bump_dict[selected_bump]['added_knobs'].remove(knob_name)
-                    self.bump_dict[selected_bump]['float_inputs'].remove(float_input)
+                # Remove the knob from the added_knobs list and float_inputs
+                self.bump_dict[selected_bump]['added_knobs'].remove(knob_name)
+                self.bump_dict[selected_bump]['float_inputs'].remove(float_input)
 
-                knob_hbox = widgets.HBox([float_input, remove_button], layout=widgets.Layout(width='100%', padding='5px', align_items='center'))
-                remove_button.on_click(remove_knob)
+            # Group the float and button in a HBox
+            knob_hbox = widgets.HBox([float_input, remove_button], layout=widgets.Layout(width='100%', padding='5px', align_items='center'))
+            remove_button.on_click(remove_knob)
 
-                # Add the knob to the corresponding bump's knob container
-                self.bump_dict[selected_bump]['knobs'].children += (knob_hbox,)
+            # Add the knob to the corresponding bump's knob container
+            self.bump_dict[selected_bump]['knobs'].children += (knob_hbox,)
 
-                # Add the knob to the added_knobs list and float_inputs list
-                self.bump_dict[selected_bump]['added_knobs'].append(knob_name)
-                self.bump_dict[selected_bump]['float_inputs'].append(float_input)
+            # Add the knob to the added_knobs list and float_inputs list
+            self.bump_dict[selected_bump]['added_knobs'].append(knob_name)
+            self.bump_dict[selected_bump]['float_inputs'].append(float_input)
             
-    # Function to add a bump to the final bump container
     def add_final_bump(self, b):
+        """
+        Method to add a bump for final calculation - scaling of the defined kicks
+        """
         selected_bump = self.final_bump_dropdown.value
+        # Check if already added
         if selected_bump and selected_bump not in [child.children[0].value for child in self.final_bump_container.children]:
+            # Create a float input and a remove button
             float_input = widgets.FloatText(description="Value", layout=widgets.Layout(width='200px'))
             remove_button = widgets.Button(description="Remove", style=widgets.ButtonStyle(button_color='rgb(249, 123, 114)'), layout=widgets.Layout(width='100px'))
 
@@ -288,250 +320,25 @@ class InteractiveTool():
             remove_button.on_click(remove_bump)
             self.final_bump_container.children += (bump_hbox,)
             
-    # Function to apply and calculate sum of knobs for each bump
     def apply_operation(self, b):
-          
+        """
+        Method to add the bumps in final_bump_container to the line
+        """
+        # Iterate over all bumps in the container
         for bump_hbox in self.final_bump_container.children:
             bump_name = bump_hbox.children[0].value
             bump_float_value = bump_hbox.children[1].value
 
-            if bump_name in self.bump_dict:
-                float_inputs = self.bump_dict[bump_name]['float_inputs']
-                selected_beam = self.bump_dict[bump_name]['vbox'].children[0].value  # Get the selected beam
-                
-                for i in float_inputs:
-                    self.aperture_data.change_acb_knob(i.description, i.value*bump_float_value*1e-6, selected_beam)
+            float_inputs = self.bump_dict[bump_name]['float_inputs']
+            selected_beam = self.bump_dict[bump_name]['vbox'].children[0].value  # Get the selected beam
+
+            # Iterate over all knobs in the bump definition and scale them accordingly    
+            for i in float_inputs:
+                self.aperture_data.change_acb_knob(i.description, i.value*bump_float_value*1e-6, selected_beam)
         
+        # Twiss and update the graph
         self.aperture_data.twiss()
         self.update_graph()
-            
-    def create_acb_knobs(self):
-        """
-        Initialises controls for adding a local bump by specifying currents for knobs
-        """
-        self.bump_plane_dropdown_b1 = Dropdown(
-                    options=['horizontal', 'vertical'],
-                    description='Select plane:',
-                    layout=Layout(width='300px'),
-                    disabled=False)
-        
-        self.bump_plane_dropdown_b2 = Dropdown(
-                    options=['horizontal', 'vertical'],
-                    description='Select plane:',
-                    layout=Layout(width='300px'),
-                    disabled=False)
-        
-        self.remove_bumps_button = Button(
-                description="Remove all bumps", 
-                style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)')
-            )
-        
-        # Attach a method to the button
-        self.remove_bumps_button.on_click(self.on_remove_bumps_button_clicked)
-
-        # Attach the update function to the first dropdown's 'value' attribute
-        self.bump_plane_dropdown_b1.observe(self.update_acb_dropdown_b1, names='value')
-        self.bump_plane_dropdown_b2.observe(self.update_acb_dropdown_b2, names='value')
-        # Group in a list for later
-        self.main_bump_controls = [self.remove_bumps_button]
-        
-        # Dictionaries and list to store selected knobs, corresponding widgets, and current widget values
-        self.selected_acb_knobs_b1 = []
-        self.acb_widgets_b1 = {}
-        self.acb_values_b1 = {}
-        
-        self.selected_acb_knobs_b2 = []
-        self.acb_widgets_b2 = {}
-        self.acb_values_b2 = {}
-
-        # Create a dropdown to select a knob
-        self.acb_knob_dropdown_b1 = Dropdown(
-                options=[],
-                description='Select knob:',
-                disabled=False)
-        
-        self.acb_knob_dropdown_b2 = Dropdown(
-                options=[],
-                description='Select knob:',
-                disabled=False)
-        
-        # Create a box to store selected knobs
-        self.acb_knob_box_b1 = VBox(layout=Layout(
-            justify_content='center',
-            align_items='center',
-            width='100%',
-            padding='10px',
-            border='solid 2px #eee'))
-        
-        self.acb_knob_box_b2 = VBox(layout=Layout(
-            justify_content='center',
-            align_items='center',
-            width='100%',
-            padding='10px',
-            border='solid 2px #eee'))
-        
-        # Button to add selection
-        self.acb_add_button_b1 = Button(
-            description="Add", 
-            style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'), 
-            tooltip='Add the selected knob to the list of adjustable knobs.'
-        )
-        # Button to remove selection
-        self.acb_remove_button_b1 = Button(
-            description="Remove", 
-            style=widgets.ButtonStyle(button_color='rgb(249, 123, 114)'), 
-            tooltip='Remove the selected knob from the list of adjustable knobs.'
-        )
-        # Button to add a bump    
-        self.acb_apply_button_b1 = Button(
-            description="Add bump", 
-            style=widgets.ButtonStyle(button_color='pink'), 
-            tooltip='Reset all knobs to their default or nominal values.'
-        )
-
-        # Group in a list for later
-        self.acb_knob_controls_b1 = [self.bump_plane_dropdown_b1, self.acb_knob_dropdown_b1, self.acb_add_button_b1, self.acb_remove_button_b1, self.acb_apply_button_b1]
-        
-        # Button to add selection
-        self.acb_add_button_b2 = Button(
-            description="Add", 
-            style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'), 
-            tooltip='Add the selected knob to the list of adjustable knobs.'
-        )
-        # Button to remove selection
-        self.acb_remove_button_b2 = Button(
-            description="Remove", 
-            style=widgets.ButtonStyle(button_color='rgb(249, 123, 114)'), 
-            tooltip='Remove the selected knob from the list of adjustable knobs.'
-        )
-        # Button to add a bump    
-        self.acb_apply_button_b2 = Button(
-            description="Add bump", 
-            style=widgets.ButtonStyle(button_color='pink'), 
-            tooltip='Reset all knobs to their default or nominal values.'
-        )
-
-        # Group in a list for later
-        self.acb_knob_controls_b2 = [self.bump_plane_dropdown_b2, self.acb_knob_dropdown_b2, self.acb_add_button_b2, self.acb_remove_button_b2, self.acb_apply_button_b2]
-
-        # Assign function to buttons
-        self.acb_add_button_b1.on_click(lambda b: self.on_acb_add_button_clicked(b, 'beam 1'))
-        self.acb_remove_button_b1.on_click(lambda b:self.on_acb_remove_button_clicked(b, 'beam 1'))
-        self.acb_apply_button_b1.on_click(lambda b:self.on_acb_apply_button_clicked(b, 'beam 1'))
-        
-        self.acb_add_button_b2.on_click(lambda b: self.on_acb_add_button_clicked(b, 'beam 2'))
-        self.acb_remove_button_b2.on_click(lambda b:self.on_acb_remove_button_clicked(b, 'beam 2'))
-        self.acb_apply_button_b2.on_click(lambda b:self.on_acb_apply_button_clicked(b, 'beam 2'))
-    
-    def on_acb_apply_button_clicked(self, b, beam):
-        """
-        Handles event of adding a local bump by using current inputs
-        """
-        if beam == 'beam 1': 
-            plane_dropdown = self.bump_plane_dropdown_b1
-            acb_widgets = self.acb_widgets_b1
-        elif beam == 'beam 2': 
-            plane_dropdown = self.bump_plane_dropdown_b2
-            acb_widgets = self.acb_widgets_b2
-            
-        try:
-            for knob, widget in acb_widgets.items():
-                self.aperture_data.change_acb_knob(knob, widget.value, beam)
-
-            # Re-twiss
-            self.aperture_data.twiss()
-            self.update_graph()
-        except: 
-            print_and_clear('Could not compute twiss. Try again with different knob values.')
-
-    def on_acb_add_button_clicked(self, b, beam):
-        """
-        Handle the event when the Add button is clicked. 
-        Add a new knob to the selected list and create a widget for it.
-        """
-        if beam == 'beam 1': 
-            acb_knob_dropdown = self.acb_knob_dropdown_b1
-            acb_widgets = self.acb_widgets_b1
-            selected_acb_knobs = self.selected_acb_knobs_b1
-            acb_values = self.acb_values_b1
-        elif beam == 'beam 2': 
-            acb_knob_dropdown = self.acb_knob_dropdown_b2
-            acb_widgets = self.acb_widgets_b2
-            selected_acb_knobs = self.selected_acb_knobs_b2
-            acb_values = self.acb_values_b2
-            
-        # Knob selected in the dropdown menu
-        knob = acb_knob_dropdown.value
-        # If the knob is not already in the selected list, add it
-        if knob and knob not in selected_acb_knobs:
-            selected_acb_knobs.append(knob)
-            acb_values[knob] = 0
-            # Create a new FloatText widget for the selected knob
-            acb_widget = FloatText(
-                value=acb_values[knob],
-                description=f'{knob}',
-                disabled=False
-            )
-            # Add the widget to the knob widgets list
-            acb_widgets[knob] = acb_widget
-
-            # Update selected knobs and display value
-            self.update_acb_box(beam)
-
-    def on_acb_remove_button_clicked(self, b, beam):
-        """
-        Handle the event when the Remove button is clicked. 
-        Remove the selected knob from the list and delete its widget.
-        """
-        if beam == 'beam 1': 
-            acb_knob_dropdown = self.acb_knob_dropdown_b1
-            acb_widgets = self.acb_widgets_b1
-            selected_acb_knobs = self.selected_acb_knobs_b1
-            acb_values = self.acb_values_b1
-        elif beam == 'beam 2': 
-            acb_knob_dropdown = self.acb_knob_dropdown_b2
-            acb_widgets = self.acb_widgets_b2
-            selected_acb_knobs = self.selected_acb_knobs_b2
-            acb_values = self.acb_values_b2
-            
-        # Knob selected in the dropdown menu
-        knob = acb_knob_dropdown.value
-        # If the knob is in the selected list, remove it
-        if knob in selected_acb_knobs:
-            selected_acb_knobs.remove(knob)
-            del acb_values[knob]  # Remove the value of the knob
-            if knob in acb_widgets:
-                del acb_widgets[knob]  # Remove the widget
-
-            # Update selected knobs and display value
-            self.update_acb_box(beam)
-
-    def update_acb_box(self, beam):
-        """
-        Updates the layout of the knob_box with current knob widgets.
-        """
-        if beam == 'beam 1': 
-            acb_knob_dropdown = self.acb_knob_dropdown_b1
-            acb_widgets = self.acb_widgets_b1
-            selected_acb_knobs = self.selected_acb_knobs_b1
-            acb_values = self.acb_values_b1
-            acb_knob_box = self.acb_knob_box_b1
-        elif beam == 'beam 2': 
-            acb_knob_dropdown = self.acb_knob_dropdown_b2
-            acb_widgets = self.acb_widgets_b2
-            selected_acb_knobs = self.selected_acb_knobs_b2
-            acb_values = self.acb_values_b2
-            acb_knob_box = self.acb_knob_box_b2
-            
-        # Group the widgets into sets of three per row21840
-        rows = []
-        for i in range(0, len(selected_acb_knobs), self.number_of_knobs_per_line):
-            row = HBox([acb_widgets[knob] for knob in selected_acb_knobs[i:i+self.number_of_knobs_per_line]],
-                       layout=Layout(align_items='flex-start'))
-            rows.append(row)
-
-        # Update the knob_box with the new rows
-        acb_knob_box.children = rows
         
     def create_options_controls(self):
         """
@@ -560,17 +367,20 @@ class InteractiveTool():
         # Button to switch between horizontal and vertical planes
         self.apply_changes_button = Button(
             description="Apply changes", 
-            style=widgets.ButtonStyle(button_color='pink'), 
-            tooltip='blah blah'
+            style=widgets.ButtonStyle(button_color='pink')
         )
         # Assign method to the button
         self.apply_changes_button.on_click(self.on_apply_changes_button_clicked)
 
         # Group in a list for later
         self.options_controls = [self.cycle_input, self.envelope_input, self.plane_dropdown, self.apply_changes_button]
+        self.widgets += self.options_controls
 
     def create_2d_plot_controls(self):
-
+        """
+        Create widgets for the cross-section
+        """
+        # Element at which the cross-section will be visualised
         self.element_input = Text(
             value='',                               # Initial value (empty string)
             description='Element:',           # Label for the widget
@@ -578,78 +388,90 @@ class InteractiveTool():
             style={'description_width': 'initial'}, # Adjust the width of the description label
             layout=Layout(width='300px'))  
         
+        # Dropdown to select which beam will be visualised
         self.beam_dropdown_2d_plot = Dropdown(
                     options=['beam 1', 'beam 2', 'both'],
                     description='Select beam:',
                     layout=Layout(width='300px'),
                     disabled=False)
         
+        # Button to generate a new plot
         self.generate_2d_plot_button = Button(
             description="Generate", 
             style=widgets.ButtonStyle(button_color='pink'), 
             tooltip='blah blah'
         )
         
+        # Button to add a new trace to the existing plot
         self.add_trace_to_2d_plot_button = Button(
             description="Add trace", 
             style=widgets.ButtonStyle(button_color='pink'), 
             tooltip='blah blah'
         )    
-
+        # Assign functions to the buttons
         self.generate_2d_plot_button.on_click(self.generate_2d_plot_button_clicked)
         self.add_trace_to_2d_plot_button.on_click(self.add_trace_to_2d_plot_button_clicked)        
-        
-        self.cross_section_controls = [self.element_input, self.beam_dropdown_2d_plot]
         
         # Attach the action to the dropdown's 'observe' method
         self.beam_dropdown_2d_plot.observe(self.on_beam_change)
 
+        self.widgets += [self.generate_2d_plot_button, self.add_trace_to_2d_plot_button]
+
     def on_beam_change(self, change):
-        
+        """
+        Method to change between the beam 1 beam 2 cross-section
+        """
         if change['type'] == 'change' and change['name'] == 'value':
-            # Add your desired action here
             beam = change['new']
             if beam == 'beam 1': self.cross_section_container.children = [self.cross_section_b1]
             elif beam == 'beam 2': self.cross_section_container.children = [self.cross_section_b2]
             elif beam == 'both': self.cross_section_container.children = [self.cross_section_both]
 
     def add_trace_to_2d_plot_button_clicked(self, b):
-        
+        """
+        Method to add a trace to the existing cross-section
+        """
         n = self.aperture_data.n
         element = self.element_input.value
         beam = self.beam_dropdown_2d_plot.value
         
+        # Update the cross-section attributes
+        # Beam 1
         beam_center_trace_b1, envelope_trace_b1, aperture_trace = add_beam_trace(element, 'beam 1', self.aperture_data, n)
         self.cross_section_b1.add_trace(beam_center_trace_b1)
         self.cross_section_b1.add_trace(envelope_trace_b1)
+        # Beam 2
         beam_center_trace_b2, envelope_trace_b2, aperture_trace = add_beam_trace(element, 'beam 2', self.aperture_data, n)
         self.cross_section_b2.add_trace(beam_center_trace_b2)
         self.cross_section_b2.add_trace(envelope_trace_b2)
-
+        # Both beams simultaneously
         self.cross_section_both.add_trace(beam_center_trace_b1)
         self.cross_section_both.add_trace(envelope_trace_b1)
         self.cross_section_both.add_trace(beam_center_trace_b2)
         self.cross_section_both.add_trace(envelope_trace_b2)
-        
+
+        # Update the graph
         if beam == 'beam 1': self.cross_section_container.children = [self.cross_section_b1]
         elif beam == 'beam 2': self.cross_section_container.children = [self.cross_section_b2]
         elif beam == 'both': self.cross_section_container.children = [self.cross_section_both]
     
     def generate_2d_plot_button_clicked(self, b):
-
+        """
+        Method to create a new cross-section based on the current state of the line
+        """
         n = self.aperture_data.n
         element = self.element_input.value
         beam = self.beam_dropdown_2d_plot.value
-        try:
-            print_and_clear('Generating the cross-section...')
-            self.cross_section_b1 = generate_2d_plot(element, 'beam 1', self.aperture_data, n, width=450, height=450)
-            self.cross_section_b2 = generate_2d_plot(element, 'beam 2', self.aperture_data, n, width=450, height=450)
-            self.cross_section_both = generate_2d_plot(element, 'both', self.aperture_data, n, width=450, height=450)
-            if beam == 'beam 1': self.cross_section_container.children = [self.cross_section_b1]
-            elif beam == 'beam 2': self.cross_section_container.children = [self.cross_section_b2]
-            elif beam == 'both': self.cross_section_container.children = [self.cross_section_both]
-        except Exception as e:
-            raise e
+
+        print_and_clear('Generating the cross-section...')
+        # Generate and store as attributes the cross-sctions
+        self.cross_section_b1 = generate_2d_plot(element, 'beam 1', self.aperture_data, n, width=450, height=450)
+        self.cross_section_b2 = generate_2d_plot(element, 'beam 2', self.aperture_data, n, width=450, height=450)
+        self.cross_section_both = generate_2d_plot(element, 'both', self.aperture_data, n, width=450, height=450)
+        # Update the graph
+        if beam == 'beam 1': self.cross_section_container.children = [self.cross_section_b1]
+        elif beam == 'beam 2': self.cross_section_container.children = [self.cross_section_b2]
+        elif beam == 'both': self.cross_section_container.children = [self.cross_section_both]
         
     def on_remove_bumps_button_clicked(self, b):
         """
@@ -659,7 +481,9 @@ class InteractiveTool():
         self.update_graph()
         
     def update_bump_knob_dropdown(self, change):
-        
+        """
+        Method to sort the knobs in bump_knob_dropdown by beam and plane
+        """
         if hasattr(self, 'aperture_data'):
             beam = self.sort_knobs_beam_dropdown.value
             plane = self.sort_knobs_plane_dropdown.value
@@ -673,47 +497,11 @@ class InteractiveTool():
                     self.bump_knob_dropdown.options = self.aperture_data.acbv_knobs_b1['knob']
                 elif beam == 'beam 2': 
                     self.bump_knob_dropdown.options = self.aperture_data.acbv_knobs_b2['knob']
-    
-    def update_acb_dropdown(self, beam, plane_dropdown, knob_dropdown):
-        """
-        Method to update all local bump dropdowns options by plane and beam selected
-        """
-        if hasattr(self, 'aperture_data'):
-            # Update dropdowns with acb knobs dropdowns
-            if plane_dropdown.value == 'horizontal': 
-                if beam == 'beam 1': 
-                    knob_dropdown.options = self.aperture_data.acbh_knobs_b1['knob']
-                elif beam == 'beam 2': 
-                    knob_dropdown.options = self.aperture_data.acbh_knobs_b2['knob']
-            if plane_dropdown.value == 'vertical':
-                if beam == 'beam 1': 
-                    knob_dropdown.options = self.aperture_data.acbv_knobs_b1['knob']
-                elif beam == 'beam 2': 
-                    knob_dropdown.options = self.aperture_data.acbv_knobs_b2['knob']
-
-    def update_acb_dropdown_b1(self, change):
-        """
-        Handles event of changing the beam in the beam dropdown
-        """
-        self.update_acb_dropdown('beam 1', self.bump_plane_dropdown_b1, self.acb_knob_dropdown_b1)
-
-    def update_acb_dropdown_b2(self, change):
-        """
-        Handles event of changing the plane in the bump plane dropdown
-        """
-        self.update_acb_dropdown('beam 2', self.bump_plane_dropdown_b2, self.acb_knob_dropdown_b2)
 
     def create_time_widgets(self):
         """
         Create and configure date and time input widgets.
-
-        Returns:
-            Tuple[DatePicker, Text, List[DatePicker, Text]]: A tuple containing:
-                - DatePicker widget for selecting the date.
-                - Text widget for entering the time.
-                - A list containing both widgets.
         """
-
         # Create date and time input widgets
         self.date_picker = DatePicker(
                 description='Select Date:',
@@ -728,17 +516,13 @@ class InteractiveTool():
                 style={'description_width': 'initial'}, # Ensures the description width fits the content
                 layout=Layout(width='300px'))           # Sets the width of the widget
      
-
     def initialise_timber_data(self):
         """
         Initializes timber-related data and UI components if the `spark` attribute is provided.
 
         This method sets up UI elements and data handlers for interacting with timber data. 
         If the `spark`  Update UI components
-        Returns:
-            list: List of UI components related to timber data, or None if `spark` is not provided.
         """
-        
         # Only add timber buttons if spark given as an argument
         if self.spark:
 
@@ -769,7 +553,7 @@ class InteractiveTool():
 
         else: self.BPM_data, self.collimator_data, timber_row_controls = None, None, None
             
-        return timber_row_controls
+        self.timber_row_controls = timber_row_controls
 
     def create_ls_controls(self):
         """
@@ -828,9 +612,9 @@ class InteractiveTool():
             ls_row_controls = [self.ls_dropdown, self.init_angle_input, self.ir_dropdown, self.s_range_slider, self.fit_button, self.result_output]
             self.widgets += ls_row_controls
 
-            return ls_row_controls
+            self.ls_row_controls = ls_row_controls
             
-        else: return None
+        else: self.ls_row_controls = None
 
     def on_ir_dropdown_change(self, change):
         """
@@ -880,14 +664,6 @@ class InteractiveTool():
             width='70%',
             padding='0px',
             border='solid 2px #eee'))
-
-    def group_all_widgets(self):
-
-        # Group controls together
-        self.widgets = self.file_chooser_controls+self.knob_controls+self.options_controls+self.main_bump_controls+self.acb_knob_controls_b1+self.acb_knob_controls_b2     
-        # If spark was not given this will return a None  
-        self.timber_row_controls = self.initialise_timber_data()    
-        self.ls_row_controls = self.create_ls_controls()
     
     def define_widget_layout(self):
         """
@@ -948,42 +724,6 @@ class InteractiveTool():
         # Group main controls into a Vbox
         main_vbox = VBox(
             [file_chooser_layout, first_row_layout, self.knob_box, second_row_layout],
-            layout=Layout(
-                justify_content='space-around', # Distribute space evenly
-                align_items='center',           # Center align all items
-                width='100%',                   # Full width of the container
-                padding='10px',                 # Add padding around controls
-                border='solid 2px #ccc'))       # Border around the HBox
-        
-        main_bump_row_layout = HBox(
-            self.main_bump_controls,
-            layout=Layout(
-                justify_content='space-around', # Distribute space evenly
-                align_items='center',           # Center align all items
-                width='100%',                   # Full width of the container
-                padding='10px',                 # Add padding around controls
-                border='solid 2px #ccc'))       # Border around the HBox
-        
-        acb_row_layout_b1 = HBox(
-            self.acb_knob_controls_b1,
-            layout=Layout(
-                justify_content='space-around', # Distribute space evenly
-                align_items='center',           # Center align all items
-                width='100%',                   # Full width of the container
-                padding='10px',                 # Add padding around controls
-                border='solid 2px #ccc')) 
-        
-        acb_row_layout_b2 = HBox(
-            self.acb_knob_controls_b2,
-            layout=Layout(
-                justify_content='space-around', # Distribute space evenly
-                align_items='center',           # Center align all items
-                width='100%',                   # Full width of the container
-                padding='10px',                 # Add padding around controls
-                border='solid 2px #ccc')) 
-        
-        local_bump_vbox = VBox(
-            [main_bump_row_layout, acb_row_layout_b1, self.acb_knob_box_b1, acb_row_layout_b2, self.acb_knob_box_b2],
             layout=Layout(
                 justify_content='space-around', # Distribute space evenly
                 align_items='center',           # Center align all items
@@ -1186,8 +926,6 @@ class InteractiveTool():
         # Update UI components
         self.enable_widgets()
         self.update_knob_dropdown()
-        self.update_acb_dropdown('beam 1', self.bump_plane_dropdown_b1, self.acb_knob_dropdown_b1)
-        self.update_acb_dropdown('beam 2', self.bump_plane_dropdown_b2, self.acb_knob_dropdown_b2)
         self.bump_knob_dropdown.options = self.aperture_data.acbh_knobs_b1['knob']
 
     def _load_aperture_data(self, path):
@@ -1437,7 +1175,7 @@ class InteractiveTool():
 
         for i in filtered_buttons:
             i.disabled = True
-        filtered_buttons[3].disabled = False
+        self.apply_changes_button.disabled = False
 
     def enable_widgets(self):
         """

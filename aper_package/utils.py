@@ -17,7 +17,10 @@ def find_s_value(name, data):
     """
     # Normalize the input name to lowercase
     name = name.lower()
-    df_list = [data.tw_b1, data.tw_b2, data.aper_b1, data.aper_b2]
+    # Check if the aperture is loaded
+    if hasattr(data, 'aper_b1'):
+        df_list = [data.tw_b1, data.tw_b2, data.aper_b1, data.aper_b2]
+    else: df_list = [data.tw_b1, data.tw_b2]
     
     # Iterate through each dataframe in the list
     for df in df_list:
