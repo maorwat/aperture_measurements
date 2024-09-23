@@ -412,7 +412,7 @@ def generate_2d_plot(element, beam, data, n, width=600, height=600):
 
     # Update layout for the figure with custom width and height
     fig.update_layout(
-        title=f'{beam} cross-section',
+        title=f'{beam} 2D view',
         plot_bgcolor='white',
         xaxis_title='x [m]',
         yaxis_title='y [m]',
@@ -460,17 +460,47 @@ def add_beam_trace(element, beam, data, n):
 
     if hasattr(data, 'aper_b1'):
         # Extract rectangle dimensions from APER_1 and APER_2
-        aper_x = filtered_df['APER_1']
-        aper_y = filtered_df['APER_2']
-        
-        # Define the rectangle corners as a scatter trace
-        aperture_trace = go.Scatter(
-            x=[-aper_x, aper_x, aper_x, -aper_x, -aper_x],  # Close the rectangle
-            y=[-aper_y, -aper_y, aper_y, aper_y, -aper_y],  # Close the rectangle
-            mode='lines',
-            line=dict(color='grey', width=2),
-            fill='toself',  # To close the shape
-            fillcolor='rgba(0, 0, 0, 0)'  # No fill
+        aper_1, aper_2, aper_3, aper_4 = filtered_df['APER_1'], filtered_df['APER_2'], filtered_df['APER_3'], filtered_df['APER_4']
+
+        t = np.linspace(0, 2*np.pi, 10000)
+    
+        x_rect = [-aper_1, aper_1, aper_1, -aper_1, -aper_1]
+        y_rect = [-aper_2, -aper_2, aper_2, aper_2, -aper_2]
+        x_elipse = aper_3*np.cos(t)
+        y_elipse = aper_4*np.sin(t)
+
+        try:
+            indices = np.where(abs(y_elipse)>aper_2)
+            x_new = np.delete(x_elipse, indices)
+            y_new = np.delete(y_elipse, indices)
+
+            indices = np.where(abs(x_elipse)>aper_1)
+            x_new = np.delete(x_new, indices)
+            y_new = np.delete(y_new, indices)
+
+            # To close the loop
+            x_new = np.append(x_new, x_new[0])
+            y_new = np.append(y_new, y_new[0])
+
+            aperture_trace = go.Scatter(x=x_new, 
+                                        y=y_new, 
+                                        mode='lines',
+                                        line=dict(color='grey', width=2))
+
+        except: 
+            print_and_clear('oops')
+
+            aper_x = filtered_df['APER_1']
+            aper_y = filtered_df['APER_2']
+            
+            # Define the rectangle corners as a scatter trace
+            aperture_trace = go.Scatter(
+                x=[-aper_x, aper_x, aper_x, -aper_x, -aper_x],  # Close the rectangle
+                y=[-aper_y, -aper_y, aper_y, aper_y, -aper_y],  # Close the rectangle
+                mode='lines',
+                line=dict(color='grey', width=2),
+                fill='toself',  # To close the shape
+                fillcolor='rgba(0, 0, 0, 0)'  # No fill
         )
     # If aperture isn't loaded return an empty trace
     else: aperture_trace = go.Scatter()

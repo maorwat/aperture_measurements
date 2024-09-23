@@ -190,7 +190,7 @@ class InteractiveTool():
         self.bump_selection_dropdown = widgets.Dropdown(options=[], description="Select Bump", layout=widgets.Layout(width='200px'))
 
         # Dropdown to select the knob
-        self.bump_knob_dropdown = widgets.Dropdown(options=[], description="Knob", layout=widgets.Layout(width='200px'))
+        self.bump_knob_dropdown = widgets.Dropdown(options=[], description="Corrector", layout=widgets.Layout(width='200px'))
         
         # Dropdown to select the plane 
         # Used only to sort the knobs in the self.bump_knob_dropdown
@@ -205,7 +205,7 @@ class InteractiveTool():
         self.sort_knobs_beam_dropdown.observe(self.update_bump_knob_dropdown, names='value')
 
         # Button to add the selected knob
-        self.add_bump_knob_button = widgets.Button(description="Add Knob", layout=widgets.Layout(width='150px'), style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'))
+        self.add_bump_knob_button = widgets.Button(description="Add corrector", layout=widgets.Layout(width='150px'), style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'))
         self.add_bump_knob_button.on_click(self.add_knob)
 
         # Create the main container that will hold all the dynamically added VBox widgets
@@ -392,14 +392,14 @@ class InteractiveTool():
         self.generate_2d_plot_button = Button(
             description="Generate", 
             style=widgets.ButtonStyle(button_color='pink'), 
-            tooltip='blah blah'
+            tooltip='Generate a new plot of the 2D view'
         )
         
         # Button to add a new trace to the existing plot
         self.add_trace_to_2d_plot_button = Button(
             description="Add trace", 
             style=widgets.ButtonStyle(button_color='pink'), 
-            tooltip='blah blah'
+            tooltip='Add a 2D view to the existing plot'
         )    
         # Assign functions to the buttons
         self.generate_2d_plot_button.on_click(self.generate_2d_plot_button_clicked)
@@ -674,7 +674,7 @@ class InteractiveTool():
         
         # Group main controls into a Vbox
         cross_section_vbox = VBox(
-            [widgets.HTML("<h4>Visualise cross-section at the specified element</h4>"), self.element_input, self.generate_2d_plot_button, self.add_trace_to_2d_plot_button],
+            [widgets.HTML("<h4>Show 2D view at the specified element</h4>"), self.element_input, self.generate_2d_plot_button, self.add_trace_to_2d_plot_button],
             layout=Layout(
                 justify_content='space-around', # Distribute space evenly
                 align_items='center',           # Center align all items
@@ -791,7 +791,7 @@ class InteractiveTool():
             
         tab.set_title(0, 'Main')
         tab.set_title(1, 'Define local bump')
-        tab.set_title(2, 'Cross-section')
+        tab.set_title(2, '2D view')
         tab.layout.width = '100%'
         full_column = [tab, self.graph_container]
 
