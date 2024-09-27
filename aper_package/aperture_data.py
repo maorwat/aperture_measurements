@@ -494,41 +494,48 @@ class ApertureData:
         """
         delta_beta given in %
         """
-
-        if beam == 'beam 1':
-            merged = merge_twiss_and_aper(self.tw_b1, self.aper_b1)
-        elif beam == 'beam 2':
-            merged = merge_twiss_and_aper(self.tw_b2, self.aper_b2)
-
         element_position = find_s_value(element, self)
         if element_position == None:
             print_and_clear('Incorrect element')
             return
+        
+        if beam == 'beam 1':
+            merged = merge_twiss_and_aper(self.tw_b1, self.aper_b1)
+        elif beam == 'beam 2':
+            merged = merge_twiss_and_aper(self.tw_b2, self.aper_b2)  
 
-        row = merged.iloc[(merged['s'] - element_position).abs().idxmin()]
+        row = merged.iloc[(merged['s'] - element_position).abs().idxmin()] 
+
+        aperx_error, apery_error = self.calculate_aper_error(row, delta_co)
+        sigmax_after_errors, sigmay_after_errors = self.calculate_sigma_with_error(row, delta_beta, delta) 
+        
+        n1_x = (row.APER_1-aperx_error)/sigmax_after_errors
+        n1_y = (row.APER_2-apery_error)/sigmay_after_errors
+
+        return aperx_error, sigmax_after_errors, n1_x, apery_error, sigmay_after_errors, n1_y
+        
+    def calculate_aper_error(self, row, delta_co):
 
         if row['APER_TOL_1'] == np.nan: 
             print_and_clear('Aperture tolerance not defined')
             return
         
-        delta_beta = delta_beta/100 + 1 # Convert % not sureeeeeee if correct
-        
         tol_x = row.APER_TOL_1+row.APER_TOL_2
         tol_y = row.APER_TOL_1+row.APER_TOL_3
 
-        aperx_after_errors, sigmax_after_errors, n1_x = self._calculate_n1(row.APER_1, tol_x, delta_co, delta_beta, row.betx, row.dx, delta)
-        apery_after_errors, sigmay_after_errors, n1_y = self._calculate_n1(row.APER_2, tol_y, delta_co, delta_beta, row.bety, row.dy, delta)
+        aperx_error = tol_x-delta_co
+        apery_error = tol_y-delta_co
 
-        return aperx_after_errors, sigmax_after_errors, n1_x, apery_after_errors, sigmay_after_errors, n1_y
-        
-    def _calculate_n1(self, A, delta_A, delta_co, delta_beta, beta, D, delta):
+        return aperx_error, apery_error
+    
+    def calculate_sigma_with_error(self, row, delta_beta, delta):
 
-        aper_after_errors = A-delta_A-delta_co
-        sigma_after_errors = np.sqrt(delta_beta*beta*self.epsilon+(D**2)*(delta**2))
+        delta_beta = delta_beta/100 + 1 # Convert % not sureeeeeee if correct
 
-        n1 = aper_after_errors/sigma_after_errors
+        sigmax_after_errors = np.sqrt(delta_beta*row.betx*self.epsilon+(row.dx**2)*(delta**2))
+        sigmay_after_errors = np.sqrt(delta_beta*row.bety*self.epsilon+(row.dy**2)*(delta**2))
 
-        return aper_after_errors, sigma_after_errors, n1
+        return sigmax_after_errors, sigmay_after_errors
     
     def load_collimators_from_yaml(self, path: str) -> None:
         """

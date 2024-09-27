@@ -387,28 +387,25 @@ def add_velo(data: object) -> go.Scatter:
 
     return trace
 
-def generate_2d_plot(element, beam, data, n, width=600, height=600):
+def generate_2d_plot(element, beam, data, n, width=600, height=600, delta_beta=0, delta=0, delta_co=0):
     
     # Create the figure
     fig = go.Figure()
     
     if beam == 'both': 
-        beam_center_trace_b1, envelope_trace_b1, aperture_trace_b1 = add_beam_trace(element, 'beam 1', data, n)
-        beam_center_trace_b2, envelope_trace_b2, aperture_trace_b2 = add_beam_trace(element, 'beam 2', data, n)
+        traces_b1 = add_beam_trace(element, 'beam 1', data, n, delta_beta=delta_beta, delta=delta, delta_co=delta_co)
+        traces_b2 = add_beam_trace(element, 'beam 2', data, n, delta_beta=delta_beta, delta=delta, delta_co=delta_co)
         # Add scatter trace for beam center
-        fig.add_trace(beam_center_trace_b1)
-        fig.add_trace(envelope_trace_b1)
-        fig.add_trace(aperture_trace_b1)
-        fig.add_trace(beam_center_trace_b2)
-        fig.add_trace(envelope_trace_b2)
-        fig.add_trace(aperture_trace_b2)
-    else:
-        beam_center_trace, envelope_trace, aperture_trace = add_beam_trace(element, beam, data, n)
+        for i in traces_b1:
+            fig.add_trace(i)
+        for i in traces_b2:
+            fig.add_trace(i)
 
+    else:
+        traces = add_beam_trace(element, beam, data, n, delta_beta=delta_beta, delta=delta, delta_co=delta_co)
         # Add scatter trace for beam center
-        fig.add_trace(beam_center_trace)
-        fig.add_trace(envelope_trace)
-        fig.add_trace(aperture_trace)
+        for i in traces:
+            fig.add_trace(i)
 
     # Update layout for the figure with custom width and height
     fig.update_layout(
@@ -426,12 +423,12 @@ def generate_2d_plot(element, beam, data, n, width=600, height=600):
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', zeroline=True, zerolinewidth=1, zerolinecolor='lightgrey')
 
     # Set axis limits to -0.05 to 0.05 for both x and y axes
-    fig.update_xaxes(range=[-0.05, 0.05])
-    fig.update_yaxes(range=[-0.05, 0.05])
+    #fig.update_xaxes(range=[-0.05, 0.05])
+    #fig.update_yaxes(range=[-0.05, 0.05])
 
     return go.FigureWidget(fig)
 
-def add_beam_trace(element, beam, data, n):
+def add_beam_trace(element, beam, data, n, delta_beta=0, delta=0, delta_co=0):
 
     # Merging and filtering logic for beam 1 and beam 2
     if beam == 'beam 1': 
@@ -441,6 +438,7 @@ def add_beam_trace(element, beam, data, n):
         else: merged = data.tw_b1
         color = 'rgba(0,0,255,1)'
         color_fill = 'rgba(0,0,255,0.5)'
+        color_fill_with_error = 'rgba(0,0,255,0.2)'
     elif beam == 'beam 2': 
         if hasattr(data, 'aper_b2'):
             twiss, aper = data.tw_b2, data.aper_b2
@@ -448,6 +446,7 @@ def add_beam_trace(element, beam, data, n):
         else: merged = data.tw_b2
         color = 'rgba(255,0,0,1)'
         color_fill = 'rgba(255,0,0,0.5)'
+        color_fill_with_error = 'rgba(255,0,0,0.2)'
         
     element_position = find_s_value(element, data)
     merged = merged.reset_index(drop=True)
@@ -462,46 +461,8 @@ def add_beam_trace(element, beam, data, n):
         # Extract rectangle dimensions from APER_1 and APER_2
         aper_1, aper_2, aper_3, aper_4 = filtered_df['APER_1'], filtered_df['APER_2'], filtered_df['APER_3'], filtered_df['APER_4']
 
-        t = np.linspace(0, 2*np.pi, 10000)
-    
-        x_rect = [-aper_1, aper_1, aper_1, -aper_1, -aper_1]
-        y_rect = [-aper_2, -aper_2, aper_2, aper_2, -aper_2]
-        x_elipse = aper_3*np.cos(t)
-        y_elipse = aper_4*np.sin(t)
+        aperture_trace = plot_2d_aperture(aper_1, aper_2, aper_3, aper_4)
 
-        try:
-            indices = np.where(abs(y_elipse)>aper_2)
-            x_new = np.delete(x_elipse, indices)
-            y_new = np.delete(y_elipse, indices)
-
-            indices = np.where(abs(x_elipse)>aper_1)
-            x_new = np.delete(x_new, indices)
-            y_new = np.delete(y_new, indices)
-
-            # To close the loop
-            x_new = np.append(x_new, x_new[0])
-            y_new = np.append(y_new, y_new[0])
-
-            aperture_trace = go.Scatter(x=x_new, 
-                                        y=y_new, 
-                                        mode='lines',
-                                        line=dict(color='grey', width=2))
-
-        except: 
-            print_and_clear('oops')
-
-            aper_x = filtered_df['APER_1']
-            aper_y = filtered_df['APER_2']
-            
-            # Define the rectangle corners as a scatter trace
-            aperture_trace = go.Scatter(
-                x=[-aper_x, aper_x, aper_x, -aper_x, -aper_x],  # Close the rectangle
-                y=[-aper_y, -aper_y, aper_y, aper_y, -aper_y],  # Close the rectangle
-                mode='lines',
-                line=dict(color='grey', width=2),
-                fill='toself',  # To close the shape
-                fillcolor='rgba(0, 0, 0, 0)'  # No fill
-        )
     # If aperture isn't loaded return an empty trace
     else: aperture_trace = go.Scatter()
     
@@ -522,13 +483,89 @@ def add_beam_trace(element, beam, data, n):
     y1 = filtered_df['y'] + n * filtered_df['sigma_y']
     
     # Define the rectangle corners as a scatter trace
-    envelope_trace = go.Scatter(
-        x=[x0, x1, x1, x0, x0],  # Close the rectangle by repeating x0 at the end
-        y=[y0, y0, y1, y1, y0],  # Close the rectangle by repeating y0 at the end
-        mode='lines',
-        line=dict(color=color, width=2),
-        fill='toself',  # To fill the shape (optional)
-        fillcolor=color_fill  # Example fill color with some transparency
-    )
+    envelope_trace = plot_2d_envelope(x0, x1, y0, y1, color_fill)
+
+    # Check if at least one defined and if aperture loaded
+    if delta_co and hasattr(data, 'aper_b1'):
+
+        aperx_error, apery_error = data.calculate_aper_error(filtered_df, delta_co)
+
+        aperture_trace_with_error = plot_2d_aperture(aper_1-aperx_error, aper_2-apery_error, aper_3-aperx_error, aper_4-apery_error)
     
-    return beam_center_trace, envelope_trace, aperture_trace
+    else: aperture_trace_with_error = go.Scatter()
+
+    if delta or delta_beta:
+
+        sigmax_after_errors, sigmay_after_errors = data.calculate_sigma_with_error(filtered_df, delta_beta, delta) 
+
+        # Extract rectangle coordinates
+        x0 = filtered_df['x'] - n * sigmax_after_errors
+        x1 = filtered_df['x'] + n * sigmax_after_errors
+        y0 = filtered_df['y'] - n * sigmay_after_errors
+        y1 = filtered_df['y'] + n * sigmay_after_errors
+        
+        # Define the rectangle corners as a scatter trace
+        envelope_trace_with_error = plot_2d_envelope(x0, x1, y0, y1, color_fill_with_error)
+    
+    else: envelope_trace_with_error = go.Scatter()
+
+    return [beam_center_trace, envelope_trace, envelope_trace_with_error, aperture_trace, aperture_trace_with_error]
+
+def plot_2d_envelope(x0, x1, y0, y1, color): 
+
+    envelope_trace = go.Scatter(
+            x=[x0, x1, x1, x0, x0],  # Close the rectangle by repeating x0 at the end
+            y=[y0, y0, y1, y1, y0],  # Close the rectangle by repeating y0 at the end
+            mode='lines',
+            line=dict(color=color, width=2),
+            fill='toself',  # To fill the shape (optional)
+            fillcolor=color  # Example fill color with some transparency
+        )   
+
+    return envelope_trace
+
+def plot_2d_aperture(aper_1, aper_2, aper_3, aper_4):
+
+    t = np.linspace(0, 2*np.pi, 10000)
+    
+    x_rect = [-aper_1, aper_1, aper_1, -aper_1, -aper_1]
+    y_rect = [-aper_2, -aper_2, aper_2, aper_2, -aper_2]
+    x_elipse = aper_3*np.cos(t)
+    y_elipse = aper_4*np.sin(t)
+
+    try:
+        indices = np.where(abs(y_elipse)>aper_2)
+        x_new = np.delete(x_elipse, indices)
+        y_new = np.delete(y_elipse, indices)
+
+        indices = np.where(abs(x_elipse)>aper_1)
+        x_new = np.delete(x_new, indices)
+        y_new = np.delete(y_new, indices)
+
+        # To close the loop
+        x_new = np.append(x_new, x_new[0])
+        y_new = np.append(y_new, y_new[0])
+
+        aperture_trace = go.Scatter(x=x_new, 
+                                        y=y_new, 
+                                        mode='lines',
+                                        line=dict(color='grey', width=2))
+
+    except: 
+        print_and_clear('oops')
+
+        aper_x = aper_1
+        aper_y = aper_2
+            
+        # Define the rectangle corners as a scatter trace
+        aperture_trace = go.Scatter(
+                x=[-aper_x, aper_x, aper_x, -aper_x, -aper_x],  # Close the rectangle
+                y=[-aper_y, -aper_y, aper_y, aper_y, -aper_y],  # Close the rectangle
+                mode='lines',
+                line=dict(color='grey', width=2),
+                fill='toself',  # To close the shape
+                fillcolor='rgba(0, 0, 0, 0)'  # No fill
+        )
+
+    return aperture_trace
+   

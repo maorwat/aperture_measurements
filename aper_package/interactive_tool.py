@@ -8,7 +8,7 @@ from typing import Optional, List, Tuple, Any
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from ipywidgets import widgets, Tab, VBox, HBox, Button, Layout, FloatText, DatePicker, Text, Dropdown, Label, Accordion
-from IPython.display import display
+from IPython.display import display, Latex
 from ipyfilechooser import FileChooser
 
 from aper_package.figure_data import *
@@ -384,9 +384,9 @@ class InteractiveTool():
         self.element_input = Text(
             value='',                               # Initial value (empty string)
             description='Element:',           # Label for the widget
-            placeholder='e. g. mq.21l3.b1_mken',                # Placeholder text when the input is empty
+            placeholder='e. g. mq.21l3.b1',                # Placeholder text when the input is empty
             style={'description_width': 'initial'}, # Adjust the width of the description label
-            layout=Layout(width='300px'))  
+            layout=Layout(width='200px'))  
         
         # Button to generate a new plot
         self.generate_2d_plot_button = Button(
@@ -401,11 +401,74 @@ class InteractiveTool():
             style=widgets.ButtonStyle(button_color='pink'), 
             tooltip='Add a 2D view to the existing plot'
         )    
+
+        self.toggle_switch = widgets.ToggleButton(
+            value=False,
+            description='Errors not shown',
+            disabled=False,
+            button_style='',  # 'success', 'info', 'warning', 'danger' or ''
+            tooltip='Toggle me',
+            icon='times'
+        )
+        # Observe changes in the toggle button
+        self.toggle_switch.observe(self.on_toggle_change, 'value')
+
+        self.add_and_generate_2d_plot_buttons = widgets.HBox([self.toggle_switch, self.generate_2d_plot_button, self.add_trace_to_2d_plot_button], 
+                                                 layout=widgets.Layout(align_items='stretch', justify_content='space-around', width='600px'))
+
         # Assign functions to the buttons
         self.generate_2d_plot_button.on_click(self.generate_2d_plot_button_clicked)
-        self.add_trace_to_2d_plot_button.on_click(self.add_trace_to_2d_plot_button_clicked)        
+        self.add_trace_to_2d_plot_button.on_click(self.add_trace_to_2d_plot_button_clicked)  
+
+        # Widgets for n1 calculations
+        self.delta_co_input = widgets.FloatText(description=r"$\Delta$co [m]", layout=widgets.Layout(width='200px'), value=0.002)  
+        self.delta_beta_input = widgets.FloatText(description=r"$\Delta \beta$ [%]", layout=widgets.Layout(width='200px')) 
+        self.delta_input = widgets.FloatText(description=r"$\delta$", layout=widgets.Layout(width='200px')) 
+        self.error_inputs = widgets.HBox([self.delta_co_input, self.delta_beta_input, self.delta_input], 
+                                         layout=widgets.Layout(padding='5px', justify_content='space-around'))
+
+        # Button to generate a new plot
+        self.calculate_n1_button = Button(
+            description="Calculate n1", 
+            style=widgets.ButtonStyle(button_color='pink'))
         
-        self.widgets += [self.generate_2d_plot_button, self.add_trace_to_2d_plot_button]
+        self.calculate_n1_button.on_click(self.calculate_n1_button_clicked)  
+
+        self.beam_dropdown_for_n1 = widgets.Dropdown(options=['beam 1', 'beam 2'], description='Beam:', 
+                                                     layout=widgets.Layout(width='200px'))
+
+        self.element_and_beam_for_n1 = widgets.HBox([self.element_input, self.beam_dropdown_for_n1], 
+                                                 layout=widgets.Layout(padding='5px', justify_content='space-around'))
+
+        # Output with best fit angle and its uncertainty
+        self.n1_output = widgets.Output()
+        with self.n1_output:
+            display(Latex(f'Horizontal: $n_1 = $ Vertical: $n_1 = $ '))
+        self.n1_button_and_output = widgets.HBox([self.calculate_n1_button, self.n1_output], 
+                                                 layout=widgets.Layout(align_items='stretch'))
+        
+        self.widgets += [self.generate_2d_plot_button, self.add_trace_to_2d_plot_button, self.calculate_n1_button]
+
+    def on_toggle_change(self, change):
+        self.toggle_switch.description = 'Errors shown' if self.toggle_switch.value else 'Errors not shown'
+        self.toggle_switch = 'check' if self.toggle_switch.value else 'times'
+
+    def calculate_n1_button_clicked(self, b):
+
+        if hasattr(self.aperture_data, 'aper_b1'):
+            beam = self.beam_dropdown_for_n1.value
+            delta_beta = self.delta_beta_input.value
+            delta = self.delta_input.value
+            element = self.element_input.value
+            delta_co = self.delta_co_input.value
+
+            _, _, n1_x, _, _, n1_y = self.aperture_data.calculate_n1(delta_beta, delta, beam, element, delta_co)
+
+            with self.n1_output:
+                self.n1_output.clear_output()  # Clear previous output
+                display(Latex(f'Horizontal: $n_1 =$ {n1_x:.2f}$\sigma$ Vertical: $n_1 =$ {n1_y:.2f}$\sigma$'))
+        
+        else: print_and_clear('Load the aperture data')
 
     def add_trace_to_2d_plot_button_clicked(self, b):
         """
@@ -413,21 +476,24 @@ class InteractiveTool():
         """
         n = self.aperture_data.n
         element = self.element_input.value
+
+        if self.toggle_switch.value:
+            delta_beta = self.delta_beta_input.value
+            delta = self.delta_input.value
+        else: delta, delta_beta = 0, 0
         
         # Update the cross-section attributes
         # Beam 1
-        beam_center_trace_b1, envelope_trace_b1, aperture_trace = add_beam_trace(element, 'beam 1', self.aperture_data, n)
-        self.cross_section_b1.add_trace(beam_center_trace_b1)
-        self.cross_section_b1.add_trace(envelope_trace_b1)
+        traces_b1 = add_beam_trace(element, 'beam 1', self.aperture_data, n, delta_beta=delta_beta, delta=delta)
+        for i in traces_b1[:3]:
+            self.cross_section_b1.add_trace(i)
+            self.cross_section_both.add_trace(i)
+
         # Beam 2
-        beam_center_trace_b2, envelope_trace_b2, aperture_trace = add_beam_trace(element, 'beam 2', self.aperture_data, n)
-        self.cross_section_b2.add_trace(beam_center_trace_b2)
-        self.cross_section_b2.add_trace(envelope_trace_b2)
-        # Both beams simultaneously
-        self.cross_section_both.add_trace(beam_center_trace_b1)
-        self.cross_section_both.add_trace(envelope_trace_b1)
-        self.cross_section_both.add_trace(beam_center_trace_b2)
-        self.cross_section_both.add_trace(envelope_trace_b2)
+        traces_b2 = add_beam_trace(element, 'beam 2', self.aperture_data, n, delta_beta=delta_beta, delta=delta)
+        for i in traces_b2[:3]:
+            self.cross_section_b2.add_trace(i)
+            self.cross_section_both.add_trace(i)
 
         self.cross_section_container.children = [self.cross_section_b1, self.cross_section_b2, self.cross_section_both]
     
@@ -438,11 +504,17 @@ class InteractiveTool():
         n = self.aperture_data.n
         element = self.element_input.value
 
+        if self.toggle_switch.value:
+            delta_beta = self.delta_beta_input.value
+            delta = self.delta_input.value
+            delta_co = self.delta_co_input.value
+        else: delta_beta, delta, delta_co = 0, 0, 0
+
         print_and_clear('Generating the cross-section...')
         # Generate and store as attributes the cross-sctions
-        self.cross_section_b1 = generate_2d_plot(element, 'beam 1', self.aperture_data, n, width=450, height=450)
-        self.cross_section_b2 = generate_2d_plot(element, 'beam 2', self.aperture_data, n, width=450, height=450)
-        self.cross_section_both = generate_2d_plot(element, 'both', self.aperture_data, n, width=450, height=450)
+        self.cross_section_b1 = generate_2d_plot(element, 'beam 1', self.aperture_data, n, 450, 450, delta_beta, delta, delta_co)
+        self.cross_section_b2 = generate_2d_plot(element, 'beam 2', self.aperture_data, n, 450, 450, delta_beta, delta, delta_co)
+        self.cross_section_both = generate_2d_plot(element, 'both', self.aperture_data, n, 450, 450, delta_beta, delta, delta_co)
 
         self.cross_section_container.children = [self.cross_section_b1, self.cross_section_b2, self.cross_section_both]
         
@@ -674,11 +746,11 @@ class InteractiveTool():
         
         # Group main controls into a Vbox
         cross_section_vbox = VBox(
-            [widgets.HTML("<h4>Show 2D view at the specified element</h4>"), self.element_input, self.generate_2d_plot_button, self.add_trace_to_2d_plot_button],
+            [widgets.HTML("<h4>Show 2D view at the specified element</h4>"), self.element_and_beam_for_n1, self.error_inputs, self.n1_button_and_output, self.add_and_generate_2d_plot_buttons],
             layout=Layout(
                 justify_content='space-around', # Distribute space evenly
                 align_items='center',           # Center align all items
-                width='20%',                   # Full width of the container
+                width='40%',                   # Full width of the container
                 padding='0px',                 # Add padding around controls
                 border='solid 2px #ccc'))       # Border around the HBox
         
