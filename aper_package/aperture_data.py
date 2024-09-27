@@ -3,6 +3,7 @@ import pandas as pd
 import tfs
 import yaml
 import re
+from pathlib import Path
 
 from typing import Any, Dict, Optional
  
@@ -40,6 +41,7 @@ class ApertureData:
 
         # Define gamma and length of the accelerator using loaded line
         self.gamma = self.line_b1.particle_ref.to_pandas()['gamma0'][0]
+        self.beta = self.line_b1.particle_ref.to_pandas()['beta0'][0]
         self.length = self.line_b1.get_length()
 
         # Find knobs
@@ -152,7 +154,7 @@ class ApertureData:
         twiss_df = twiss_df[~twiss_df['name'].str.contains('aper|drift')]
 
         # Select necessary columns
-        return twiss_df[['s', 'name', 'x', 'y', 'betx', 'bety', 'px', 'py']]
+        return twiss_df[['s', 'name', 'x', 'y', 'betx', 'bety', 'px', 'py', 'dx', 'dy']]
 
     def _distance_to_nominal(self, plane: str) -> None:
         """
@@ -185,10 +187,12 @@ class ApertureData:
         self.tw_b1 = self.tw_b1.copy()
         self.tw_b2 = self.tw_b2.copy()
 
+        self.epsilon = self.emitt / (self.gamma*self.beta)
+
         # Add columns for horizontal and vertical sigma
         for df in [self.tw_b1, self.tw_b2]:
-            df.loc[:, 'sigma_x'] = np.sqrt(df['betx'] * self.emitt / self.gamma)
-            df.loc[:, 'sigma_y'] = np.sqrt(df['bety'] * self.emitt / self.gamma)
+            df.loc[:, 'sigma_x'] = np.sqrt(df['betx'] * self.epsilon) # Divide by the relativistic factor and the relative particle velocity to get emittance
+            df.loc[:, 'sigma_y'] = np.sqrt(df['bety'] * self.epsilon)
 
     def _get_shift(self, first_element: str) -> float:
         """
@@ -409,6 +413,7 @@ class ApertureData:
     def load_aperture(self, path_b1: str, path_b2: Optional[str]=None) -> None:
         # Load and process aperture data
         self.aper_b1, self.aper_b2 = self._load_aperture_data(path_b1, path_b2)
+        self._load_aperture_tolerance()
     
     def _load_aperture_data(self, path_b1, path_b2) -> pd.DataFrame:
         """Load and process aperture data from a file.
@@ -436,6 +441,94 @@ class ApertureData:
         df2 = match_with_twiss(self.tw_b2, df2)
 
         return df1.drop_duplicates(subset=['S']), df2.drop_duplicates(subset=['S'])
+    
+    def _load_aperture_tolerance(self):
+        """
+        Loads madx file with aperture tolerances and adds them to the aper_b1 and aper_b2 dataframe
+        """
+
+        home_path = str(Path.cwd().parent)
+        tol_b1 = self._create_df_from_madx(home_path+'/test_data/aper_tol_profiles-as-built.b1.madx')
+        tol_b2 = self._create_df_from_madx(home_path+'/test_data/aper_tol_profiles-as-built.b2.madx')
+
+        # Merge with the existing aperture dataframe attribute
+        self.aper_b1 = pd.merge(tol_b1, self.aper_b1, on='NAME', how='right')
+        self.aper_b2 = pd.merge(tol_b2, self.aper_b2, on='NAME', how='right')
+
+    def _create_df_from_madx(self, file_path):
+        """
+        Creates a dataframe with elements and corresponding aperture tolerances from specified madx file
+        """
+        # Create lists to store parsed data
+        element_names = []
+        aper_tol_values = []
+
+        # Open and read the file
+        with open(file_path, 'r') as file:
+            for line in file:
+                # Skip comment lines
+                if line.startswith('!') or line.strip() == '':
+                    continue
+
+                # Use regex to find element name and APER_TOL values
+                match = re.match(r'(\w[\w.]+),\s*APER_TOL=\{([\d\.,\s\-]+)\};', line)
+                if match:
+                    element_name = match.group(1)
+                    # Extract the tolerance values and convert them to a list of floats
+                    aper_tol = [float(x) for x in match.group(2).split(',')]
+                    
+                    # Store the parsed data
+                    element_names.append(element_name)
+                    aper_tol_values.append(aper_tol)
+
+        # Create a pandas DataFrame from the parsed data
+        df = pd.DataFrame(aper_tol_values, columns=['APER_TOL_1', 'APER_TOL_2', 'APER_TOL_3'])
+        df['NAME'] = element_names
+
+        # Reorder the columns to have 'Element' first
+        df = df[['NAME', 'APER_TOL_1', 'APER_TOL_2', 'APER_TOL_3']]
+
+        return df
+    
+    def calculate_n1(self, delta_beta, delta, beam, element, delta_co=0.002):
+        """
+        delta_beta given in %
+        """
+
+        if beam == 'beam 1':
+            merged = merge_twiss_and_aper(self.tw_b1, self.aper_b1)
+        elif beam == 'beam 2':
+            merged = merge_twiss_and_aper(self.tw_b2, self.aper_b2)
+
+        element_position = find_s_value(element, self)
+        if element_position == None:
+            print_and_clear('Incorrect element')
+            return
+
+        row = merged.iloc[(merged['s'] - element_position).abs().idxmin()]
+
+        if row['APER_TOL_1'] == np.nan: 
+            print_and_clear('Aperture tolerance not defined')
+            return
+        
+        delta_beta = delta_beta/100 + 1 # Convert % not sureeeeeee if correct
+        
+        tol_x = row.APER_TOL_1+row.APER_TOL_2
+        tol_y = row.APER_TOL_1+row.APER_TOL_3
+
+        aperx_after_errors, sigmax_after_errors, n1_x = self._calculate_n1(row.APER_1, tol_x, delta_co, delta_beta, row.betx, row.dx, delta)
+        apery_after_errors, sigmay_after_errors, n1_y = self._calculate_n1(row.APER_2, tol_y, delta_co, delta_beta, row.bety, row.dy, delta)
+
+        return aperx_after_errors, sigmax_after_errors, n1_x, apery_after_errors, sigmay_after_errors, n1_y
+        
+    def _calculate_n1(self, A, delta_A, delta_co, delta_beta, beta, D, delta):
+
+        aper_after_errors = A-delta_A-delta_co
+        sigma_after_errors = np.sqrt(delta_beta*beta*self.epsilon+(D**2)*(delta**2))
+
+        n1 = aper_after_errors/sigma_after_errors
+
+        return aper_after_errors, sigma_after_errors, n1
     
     def load_collimators_from_yaml(self, path: str) -> None:
         """

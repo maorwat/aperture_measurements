@@ -24,13 +24,14 @@ def find_s_value(name, data):
     
     # Iterate through each dataframe in the list
     for df in df_list:
-        # Standardize column names by converting them to lowercase
-        df.columns = df.columns.str.lower()
+        # Create a temporary copy of the DataFrame and change column names to lowercase
+        df_temp = df.copy()
+        df_temp.columns = df_temp.columns.str.lower()
         
         # Check if the 'name' column contains the given name
-        if name in df['name'].str.lower().values:
+        if name in df_temp['name'].values:
             # Return the corresponding 's' value
-            return df.loc[df['name'].str.lower() == name, 's'].values[0]
+            return df_temp.loc[df_temp['name'] == name, 's'].values[0]
     
     # If name is not found in any dataframe
     return None
@@ -70,11 +71,18 @@ def merge_twiss_and_aper(twiss, aper):
 
     # Merge the DataFrames on the normalized 'name' column
     merged_df = pd.merge(df1, df2, left_on='name', right_on='NAME')
-    # Optionally, you can drop the redundant 'NAME' column after merging
+    # Drop the redundant 'NAME' column after merging
     merged_df.drop(columns=['NAME'], inplace=True)
-    # Drop all rows with NaN values
-    merged_df.dropna(inplace=True)
 
+    # Define columns to ignore for NaN checks
+    ignore_columns = ['APER_TOL_1', 'APER_TOL_2', 'APER_TOL_3']
+
+    # Get a list of columns to check for NaNs (all columns except the ignored ones)
+    columns_to_check = merged_df.columns.difference(ignore_columns)
+
+    # Drop rows where there are NaNs in columns_to_check
+    # but keep rows if NaNs only appear in `ignore_columns`
+    merged_df.dropna(subset=columns_to_check, how='any', inplace=True)
     # Reset the index and drop the old index column
     merged_df.reset_index(drop=True, inplace=True)
     
