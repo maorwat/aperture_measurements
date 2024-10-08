@@ -47,14 +47,14 @@ class ApertureData:
         # Find knobs
         self._define_knobs()
         self._define_acb_knobs()
-        self._define_mcbs()
-
+        
         # Turn off all multipoles with order > 2 and relax the aperture to enable higher crossing angles
         self.turn_off_multipoles()
         self.relax_aperture()
 
         # Twiss
         self.twiss()
+        self.define_mcbs()
 
         # Keep the nominal crossing seperately for calculations
         self._define_nominal_crossing()
@@ -279,7 +279,7 @@ class ApertureData:
         element = element.lower()
         
         # Find how much to shift the data
-        shift = self._get_shift(element)
+        shift = self._get_shift(element) # Here I set a new first element
 
         # List of attributes to shift, categorized by their shift type
         attributes_to_shift = {
@@ -366,6 +366,74 @@ class ApertureData:
 
         # Update the current value with the new value
         knobs_df.loc[knobs_df['knob'] == knob, 'current value'] = value
+    
+    def _define_acb_knobs(self) -> None:
+        """
+        Create dataframes with knobs controling current of orbit correctors
+        """
+        # Vertical plane
+        self.acbv_knobs_b1 = self._create_acb_knob_df(r'acb.*v.*b1$', self.line_b1)
+        self.acbv_knobs_b2 = self._create_acb_knob_df(r'acb.*v.*b2$', self.line_b2)
+
+        # Horizontal plane
+        self.acbh_knobs_b1 = self._create_acb_knob_df(r'acb.*h.*b1$', self.line_b1)
+        self.acbh_knobs_b2 = self._create_acb_knob_df(r'acb.*h.*b2$', self.line_b2)
+
+    def _create_acb_knob_df(self, search_string, line):
+        """
+        Creates data frames with acb knobs and their values for given plane and beam 
+        """
+
+        knobs = [i for i in line.vv.vars.keys() if re.search(search_string, i)] 
+        values = [line.vv.get(knob) for knob in knobs]
+
+        df = pd.DataFrame({
+            'knob': knobs, # Knob names
+            'initial value': values, # Initial values for resetting
+            'current value': values # Current values
+        })
+
+        # Add a column to facilitate sorting by region
+        df['sort_key'] = df['knob'].apply(self._extract_sort_key)
+
+        return df
+
+    def sort_acb_knobs_by_region(self, beam, plane, region):
+        """
+        Create sorted lists of knobs corresponding to a selected region
+        """
+        # Select the dataframe to sort
+        if plane == 'horizontal': 
+            if beam == 'beam 1': 
+                df = self.acbh_knobs_b1
+            elif beam == 'beam 2': 
+                df = self.acbh_knobs_b2
+        if plane == 'vertical':
+            if beam == 'beam 1': 
+                df = self.acbv_knobs_b1
+            elif beam == 'beam 2': 
+                df = self.acbv_knobs_b2
+
+        # Create a slice of the df corresponding to the selected region
+        df_l1 = df[df['sort_key'].str.contains(region)].copy()
+        # Sort the knobs
+        df_l1.loc[:, 'sort_number'] = df_l1['sort_key'].str.extract(r'(\d+)').astype(int)
+        sorted_df = df_l1.sort_values(by='sort_number').drop('sort_number', axis=1)
+
+        # Return as a list 
+        return sorted_df['knob'].to_list()
+
+    def _extract_sort_key(self, knob_name):
+        """
+        Extracts the number and region from the knob name        
+        """
+        knob_name = knob_name.replace('.', '')
+        # Match patterns like '4l1', '8l1', '4r1', '4r8', etc.
+        match = re.search(r'(\d+[lr]\d+)', knob_name)
+        if match:
+            return match.group(1)
+        else:
+            return ''
 
     def reset_knobs(self) -> None:
         """
@@ -490,9 +558,22 @@ class ApertureData:
 
         return df
     
-    def calculate_n1(self, delta_beta, delta, beam, element, delta_co=0.002):
+    def calculate_n1(self, delta_beta, delta, beam, element, rtol=None, xtol=None, ytol=None, delta_co=0.002):
         """
-        delta_beta given in %
+        Method to calculate n1
+        Parameters:
+            delta_beta: Beta beating given in %
+            delta: Momentum spread
+            beam: 'beam 1' or 'beam 2'
+            element: Element for which n1 will be calculated
+            rtol, xtol, ytol: Aperture tolerances, if not given, the tolerances from self.aper_b[12] are be takem
+            delta_co: Closed orbit error, default 2 mm
+
+        Returns:
+            aperx_error: Total error on aperture 
+            sigmax_error: Sigma including beta-beating and dispersion
+            n1_x: Calculated n1 in the horizontal plane
+            same for vertical plane
         """
         element_position = find_s_value(element, self)
         if element_position == None:
@@ -506,7 +587,7 @@ class ApertureData:
 
         row = merged.iloc[(merged['s'] - element_position).abs().idxmin()] 
 
-        aperx_error, apery_error = self.calculate_aper_error(row, delta_co)
+        aperx_error, apery_error = self.calculate_aper_error(row, rtol, xtol, ytol, delta_co)
         sigmax_after_errors, sigmay_after_errors = self.calculate_sigma_with_error(row, delta_beta, delta) 
         
         n1_x = (row.APER_1-aperx_error)/sigmax_after_errors
@@ -514,23 +595,29 @@ class ApertureData:
 
         return aperx_error, sigmax_after_errors, n1_x, apery_error, sigmay_after_errors, n1_y
         
-    def calculate_aper_error(self, row, delta_co):
+    def calculate_aper_error(self, row, rtol, xtol, ytol, delta_co):
 
-        if row['APER_TOL_1'] == np.nan: 
-            print_and_clear('Aperture tolerance not defined')
-            return
+        # Check if tolerances defined
+        if rtol is None or xtol is None or ytol is None:
+            # If not check is available in the data frame
+            if row[['APER_TOL_1', 'APER_TOL_2', 'APER_TOL_3']].isnull().any(): 
+                # If not return
+                print_and_clear('Aperture tolerance not defined')
+                return
+            # Else take errors from the dataframe
+            else: rtol, xtol, ytol = row.APER_TOL_1, row.APER_TOL_2, row.APER_TOL_3
         
-        tol_x = row.APER_TOL_1+row.APER_TOL_2
-        tol_y = row.APER_TOL_1+row.APER_TOL_3
+        tol_x = rtol+xtol
+        tol_y = rtol+ytol
 
-        aperx_error = tol_x-delta_co
-        apery_error = tol_y-delta_co
+        aperx_error = tol_x+delta_co
+        apery_error = tol_y+delta_co
 
         return aperx_error, apery_error
     
     def calculate_sigma_with_error(self, row, delta_beta, delta):
 
-        delta_beta = delta_beta/100 + 1 # Convert % not sureeeeeee if correct
+        delta_beta = delta_beta/100 + 1 # Convert % 
 
         sigmax_after_errors = np.sqrt(delta_beta*row.betx*self.epsilon+(row.dx**2)*(delta**2))
         sigmay_after_errors = np.sqrt(delta_beta*row.bety*self.epsilon+(row.dy**2)*(delta**2))
@@ -590,34 +677,6 @@ class ApertureData:
 
         # Return the collimators data
         return col
-
-    def _define_acb_knobs(self) -> None:
-        """
-        Create dataframes with knobs controling current of orbit correctors
-        """
-        # Vertical plane
-        self.acbv_knobs_b1 = self._create_acb_knob_df(r'acb.*v.*b1$', self.line_b1)
-        self.acbv_knobs_b2 = self._create_acb_knob_df(r'acb.*v.*b2$', self.line_b2)
-
-        # Horizontal plane
-        self.acbh_knobs_b1 = self._create_acb_knob_df(r'acb.*h.*b1$', self.line_b1)
-        self.acbh_knobs_b2 = self._create_acb_knob_df(r'acb.*h.*b2$', self.line_b2)
-
-    def _create_acb_knob_df(self, search_string, line):
-        """
-        Creates data frames with acb knobs and their values for given plane and beam 
-        """
-
-        knobs = [i for i in line.vv.vars.keys() if re.search(search_string, i)] 
-        values = [line.vv.get(knob) for knob in knobs]
-
-        df = pd.DataFrame({
-            'knob': knobs, # Knob names
-            'initial value': values, # Initial values for resetting
-            'current value': values # Current values
-        })
-
-        return df
     
     def load_elements(self, path: str) -> None:
         """
@@ -633,25 +692,58 @@ class ApertureData:
         # Make sure the elements align with twiss data (if cycling was performed)
         self.elements = match_with_twiss(self.tw_b1, df)
 
-    def _define_mcbs(self):
+    def define_mcbs(self):
+
+        self.mcbh_b1 = self._define_mcbs('beam 1', 'mcb.*h.*b1$')
+        self.mcbh_b2 = self._define_mcbs('beam 2', 'mcb.*h.*b2$')
+        self.mcbv_b1 = self._define_mcbs('beam 1', 'mcb.*v.*b1$')
+        self.mcbv_b2 = self._define_mcbs('beam 2', 'mcb.*v.*b2$')
+
+    def _define_mcbs(self, beam, key):
         """
         Creates lists of mcb orbit correctors for each beam for given plane
         """
-
-        self.mcbh_b1 = [element for element in list(self.line_b1.element_names) 
-                if re.search('mcb.*h.*b1$',element)]
-        self.mcbh_b2 = [element for element in list(self.line_b2.element_names)
-                if re.search('mcb.*h.*b2$',element)]
+        if beam == 'beam 1': line, tw = self.line_b1, self.tw_b1
+        elif beam == 'beam 2': line, tw = self.line_b2, self.tw_b2
         
-        self.mcbv_b1 = [element for element in list(self.line_b1.element_names) 
-                if re.search('mcb.*v.*b1$',element)]
-        self.mcbv_b2 = [element for element in list(self.line_b2.element_names)
-                if re.search('mcb.*v.*b2$',element)]
+        mcb_list = [element for element in list(line.element_names) 
+                if re.search(key, element)]
+        
+        df = tw[tw['name'].isin(mcb_list)][['name', 's']]
 
-    def add_local_bump(self, 
+        df['sort_key'] = df['name'].str.extract(r'\.([ab]?\d+[lr]\d)\.')  # Extract pattern like '4l1', 'a4l1', '9r1', etc.
+        df['sort_key'] = df['sort_key'].str.replace(r'[ab]', '', regex=True)  # Remove 'a' or 'b' if present
+
+        return df
+    
+    def sort_mcbs_by_region(self, beam, plane, region):
+        """
+        Create sorted lists of knobs corresponding to a selected region
+        """
+        # Select the dataframe to sort
+        if plane == 'horizontal': 
+            if beam == 'beam 1': 
+                df = self.mcbh_b1
+            elif beam == 'beam 2': 
+                df = self.mcbh_b2
+        if plane == 'vertical':
+            if beam == 'beam 1': 
+                df = self.mcbv_b1
+            elif beam == 'beam 2': 
+                df = self.mcbv_b2
+
+        # Create a slice of the df corresponding to the selected region
+        df_slice = df[df['sort_key'].str.contains(region)].copy()
+        # Sort the knobs
+        df_slice.loc[:, 'sort_number'] = df_slice['sort_key'].str.extract(r'(\d+)').astype(int)
+        sorted_df = df_slice.sort_values(by='sort_number').drop('sort_number', axis=1)
+
+        # Return as a list 
+        return sorted_df['name'].to_list()
+
+    def match_local_bump(self, 
                        element: str, 
-                       start_mcb: str, 
-                       end_mcb: str,
+                       relevant_mcbs: list,
                        size: float, 
                        beam: str,
                        plane: str):
@@ -659,68 +751,90 @@ class ApertureData:
         """
         Adds a 3C or 4C local bump to line using optimisation line.match
         """
-        #TODO: DOESNT WORK
-        if beam == 'beam 1': line = self.line_b1
-        elif beam == 'beam 2': line = self.line_b2
-
-        # Find the indices of the start and end elements
-        start_index = line.element_names.index(start_mcb)
-        end_index = line.element_names.index(end_mcb)
-
-        if plane == 'horizontal': key = 'mcb.*h.*b[12]$'#'mcbh'
-        elif plane == 'vertical': key = 'mcb.*v.*b[12]$'#'mcbv'
+        if beam == 'beam 1': 
+            line, tw = self.line_b1, self.tw_b1.copy().reset_index()
+            if plane == 'horizontal': df = self.acbh_knobs_b1
+            elif plane == 'vertical': df = self.acbv_knobs_b1
+        elif beam == 'beam 2': 
+            line, tw = self.line_b2, self.tw_b2.copy().reset_index()
+            if plane == 'horizontal': df = self.acbh_knobs_b2
+            elif plane == 'vertical': df = self.acbv_knobs_b2
         
-        # In case the elements were selected in the wrong order
-        elements_between = list(line.element_names[start_index:end_index + 1])
-        if len(elements_between) == 0: elements_between = list(line.element_names[end_index:start_index + 1])
-        
-        relevant_mcbs = [element for element in list(elements_between) if re.search(key,element)]
-        print(relevant_mcbs)
-        mcb_count = len(relevant_mcbs)
-        print(mcb_count)
-        
-        if mcb_count == 3 or mcb_count == 4:
+        try:
+            mcb_count = len(relevant_mcbs)
+            filtered_df = tw[tw['name'].isin(relevant_mcbs)]
 
-            print_and_clear(f'Applying a {mcb_count}C-bump...')
-            tw0 = line.twiss()
+            # Get the rows of first and last corrector
+            min_s_row = filtered_df.loc[filtered_df['s'].idxmin()]  # Row with smallest 's' value
+            max_s_row = filtered_df.loc[filtered_df['s'].idxmax()]  # Row with largest 's' value
 
-            if plane == 'vertical':
-                target1 = xt.TargetSet(['y','py'], value=tw0, at=relevant_mcbs[0])
-                target2 = xt.Target(y=size/1000, at=element)
-                target3 = xt.TargetSet(['y','py'], value=tw0, at=relevant_mcbs[-1])
-                # Get knobs that control relevant mcb elements
-                vars_list = [str(line.element_refs[element].ksl[0]._expr) for element in relevant_mcbs]
-                varylist = [re.search(r"vars\['(.*?)'\]", expr).group(1) for expr in vars_list]
-            elif plane == 'horizontal':
-                target1 = xt.TargetSet(['x','px'], value=tw0, at=relevant_mcbs[0])
-                target2 = xt.Target(x=size/1000, at=element)
-                target3 = xt.TargetSet(['x','px'], value=tw0, at=relevant_mcbs[-1])
-                vars_list = [str(line.element_refs[element].knl[0]._expr) for element in relevant_mcbs]
-                varylist = [re.search(r"vars\['(.*?)'\]", expr).group(1) for expr in vars_list]
+            # Get the indices of these rows
+            min_s_index = min_s_row.name
+            max_s_index = max_s_row.name
+
+            # Get the indices of elements downstream and upstream of the bump
+            previous_index = min_s_index - 1
+            next_index = max_s_index + 1
+
+            # Retrieve the names at these indices
+            start_element = tw.at[previous_index, 'name']
+            end_element = tw.at[next_index, 'name']
+
+        except: print('Something is wrong with the correctors')
                 
-            targets = [target1, target2, target3]
-            try:
-                self.opt = line.match(
-                    vary=xt.VaryList(varylist, step=1e-8),
-                    targets = targets)
-                
-                self.twiss()
-                print(self.opt.get_knob_values())
-            except Exception as e: print(e)
-            
-        else: print_and_clear('Wrong mcbs, retry')
+        print_and_clear(f'Applying a {mcb_count}C-bump...')
+        tw0 = line.twiss()
 
+        if plane == 'vertical':
+            target1 = xt.TargetSet(['y','py'], value=tw0, at=xt.END)
+            target2 = xt.Target('y', size/1000, at=element)
+            # Get knobs that control relevant mcb elements
+            vars_list = [str(line.element_refs[element].ksl[0]._expr) for element in relevant_mcbs]
+            varylist = [re.search(r"vars\['(.*?)'\]", expr).group(1) for expr in vars_list]
+        elif plane == 'horizontal':
+            target1 = xt.TargetSet(['x','px'], value=tw0, at=xt.END)
+            target2 = xt.Target('x', size/1000, at=element)
+            # Get knobs that control relevant mcb elements
+            vars_list = [str(line.element_refs[element].knl[0]._expr) for element in relevant_mcbs]
+            varylist = [re.search(r"vars\['(.*?)'\]", expr).group(1) for expr in vars_list]
+                
+        targets = [target1, target2]
+
+        try:
+            self.opt = line.match(
+                default_tol={None: 5e-8},
+                solver_options=dict(max_rel_penalty_increase=2.),
+                init=tw0,
+                start=(start_element),
+                end=(end_element),
+                vary=xt.VaryList(varylist),
+                targets=[target1, target2])
+                
+            self.twiss()
+            knob_values = self.opt.get_knob_values()
+
+            for knob, new_value in knob_values.items():
+                df.loc[df['knob'] == knob, 'current value'] = new_value
+
+        except Exception as e: print(e)
+        
     def get_ir_boundries(self, ir):
         """
         Mathod to get the boundries of IRs, returns a position range in metres
         """
-        number = ir[-1] #last element in the string is the number of the ir
+        try:
+            number = ir[-1] #last element in the string is the number of the ir
 
-        # Construct element names corresponding to start and end of an ir
-        start = 's.ds.l'+number+'.b1'
-        end = 'e.ds.r'+number+'.b1'
+            # Construct element names corresponding to start and end of an ir
+            start = 's.ds.l'+number+'.b1'
+            end = 'e.ds.r'+number+'.b1'
 
-        # Define the range by searching the elements in twiss data
-        s_range = (self.tw_b1[self.tw_b1['name']==start]['s'].values[0], self.tw_b1[self.tw_b1['name']==end]['s'].values[0])
+            # Define the range by searching the elements in twiss data
+            s_range = (self.tw_b1[self.tw_b1['name']==start]['s'].values[0], self.tw_b1[self.tw_b1['name']==end]['s'].values[0])
 
-        return s_range
+            return s_range
+        
+        # If something is wrong return the full line length
+        except:
+            return (0, self.length)
+            

@@ -7,7 +7,7 @@ from typing import Optional, List, Tuple, Any
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from ipywidgets import widgets, Tab, VBox, HBox, Button, Layout, FloatText, DatePicker, Text, Dropdown, Label, Accordion
+from ipywidgets import widgets, Tab, VBox, HBox, Button, Layout, FloatText, DatePicker, Text, Dropdown, Label
 from IPython.display import display, Latex
 from ipyfilechooser import FileChooser
 
@@ -19,10 +19,10 @@ from aper_package.aperture_data import ApertureData
 class InteractiveTool():
     
     def __init__(self,
-                 initial_path: Optional[str] = '/eos/project-c/collimation-team/machine_configurations/',
-                 spark: Optional[Any] = None, 
-                 angle_range = (-800, 800),
-                 number_of_knobs_per_line = 5):
+                spark: Optional[Any] = None,
+                initial_path: Optional[str] = '/eos/project-c/collimation-team/machine_configurations/', 
+                angle_range = (-800, 800),
+                number_of_knobs_per_line = 5):
         
         """
         Create and display an interactive plot with widgets for controlling and visualizing data.
@@ -30,33 +30,31 @@ class InteractiveTool():
         Parameters:
             initial_path: initial path for FileChoosers
             spark: SWAN spark session
+            angle_range: range for BPM angle fitting
+            number_of_knobs_per_line: 
         """
         # Initially, set all the paths to None
         self.path_line = None
         self.path_aperture = None
         self.path_optics = None
 
-        self.initial_path = initial_path
+        # Initially, set the plot range from 0 to 26k
+        self.plot_range = [0, 26000]
         # By default show horizontal plane first
         self.plane = 'horizontal'
+        
+        self.initial_path = initial_path
         self.spark = spark
         self.number_of_knobs_per_line = number_of_knobs_per_line
         self.angle_range = angle_range
+
+        # Create empty plots for the 2D view
         self.cross_section_b1 = self.create_empty_cross_section()
         self.cross_section_b2 = self.create_empty_cross_section()
         self.cross_section_both = self.create_empty_cross_section()
+
         # Create an empty list to store all of the widgets
         self.widgets = []
-        # Create and configure widgets
-        self.create_file_choosers()
-        self.create_options_controls()
-        self.create_knob_controls()
-        self.create_local_bump_controls()
-        self.create_2d_plot_controls()
-        self.create_graph_container()
-        self.initialise_timber_data() 
-        # Widgets for the least squares fit   
-        self.create_ls_controls()
 
         # Put all the widgets together into a nice layout
         self.define_widget_layout()
@@ -74,14 +72,28 @@ class InteractiveTool():
         self.file_chooser_aperture = FileChooser(self.initial_path, layout=Layout(width='350px'))
         self.file_chooser_optics = FileChooser(self.initial_path, layout=Layout(width='350px'))
 
+        # Add to self.widgets list
+        self.widgets += [self.file_chooser_line, self. file_chooser_aperture, self.file_chooser_optics]
+
         # Create descriptions for each file chooser
         line_chooser_with_label = HBox([Label("Select Line File:"), self.file_chooser_line])
         aperture_chooser_with_label = HBox([Label("Select Aperture File:"), self.file_chooser_aperture])
         optics_chooser_with_label = HBox([Label("Select Optics File:"), self.file_chooser_optics])
 
         # Group together
-        self.file_chooser_controls = [line_chooser_with_label, aperture_chooser_with_label, optics_chooser_with_label]
-        self.widgets += self.file_chooser_controls
+        file_chooser_controls = [line_chooser_with_label, aperture_chooser_with_label, optics_chooser_with_label]
+
+        # Create layout for the first row of controls
+        file_chooser_layout = HBox(
+            file_chooser_controls,
+            layout=Layout(
+                justify_content='space-around', # Distribute space evenly
+                align_items='flex-start',           # Center align all items
+                width='100%',                   # Full width of the container
+                padding='10px',                 # Add padding around controls
+                border='solid 2px #ccc'))       # Border around the HBox
+        
+        return file_chooser_layout
 
     def create_knob_controls(self):
         """
@@ -97,15 +109,8 @@ class InteractiveTool():
         self.knob_widgets = {}
         self.values = {}
 
-        if hasattr(self, 'aperture_data'):
-            # Create a dropdown to select a knob
-            self.knob_dropdown = Dropdown(
-                options=self.aperture_data.knobs['knob'].to_list(),
-                description='Select knob:',
-                disabled=False)
-        else: 
-            # Create a dropdown to select a knob
-            self.knob_dropdown = Dropdown(
+        # Create a dropdown to select a knob
+        self.knob_dropdown = Dropdown(
                 options=[],
                 description='Select knob:',
                 disabled=False)
@@ -122,35 +127,46 @@ class InteractiveTool():
         self.add_button = Button(
             description="Add", 
             style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'), 
-            tooltip='Add the selected knob to the list of adjustable knobs.'
-        )
+            tooltip='Add the selected knob to the list of adjustable knobs.')
+        
         # Button to remove selection
         self.remove_button = Button(
             description="Remove", 
             style=widgets.ButtonStyle(button_color='rgb(249, 123, 114)'), 
-            tooltip='Remove the selected knob from the list of adjustable knobs.'
-        )
+            tooltip='Remove the selected knob from the list of adjustable knobs.')
 
         # Button to reset knobs    
         self.reset_button = Button(
             description="Reset knobs", 
             style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)'), 
-            tooltip='Reset all knobs to their default or nominal values.'
-        )
-
-        self.knob_controls = [self.knob_dropdown, self.add_button, self.remove_button, self.reset_button]
-        self.widgets += self.knob_controls
+            tooltip='Reset all knobs to their default or nominal values.')
 
         # Assign function to buttons
         self.add_button.on_click(self.on_add_button_clicked)
         self.remove_button.on_click(self.on_remove_button_clicked)
         self.reset_button.on_click(self.on_reset_button_clicked)
 
+        # Add widgets to the full list
+        knob_controls = [self.knob_dropdown, self.add_button, self.remove_button, self.reset_button]
+        self.widgets += knob_controls
+
+        # Put all together in a hbox
+        first_row_layout = HBox(
+            knob_controls,
+            layout=Layout(
+                justify_content='space-around', # Distribute space evenly
+                align_items='center',           # Center align all items
+                width='100%',                   # Full width of the container
+                padding='10px',                 # Add padding around controls
+                border='solid 2px #ccc'))       # Border around the HBox
+        
+        return first_row_layout
+
     def update_knob_box(self):
         """
         Updates the layout of the knob_box with current knob widgets.
         """
-        # Group the widgets into sets of three per row21840
+        # Group the widgets into sets of self.number_og_knobs_per_line
         rows = []
         for i in range(0, len(self.selected_knobs), self.number_of_knobs_per_line):
             row = HBox([self.knob_widgets[knob] for knob in self.selected_knobs[i:i+self.number_of_knobs_per_line]],
@@ -166,7 +182,91 @@ class InteractiveTool():
         """
         # Create a dropdown to select a knob
         self.knob_dropdown.options = self.aperture_data.knobs['knob'].to_list()
+        # If spark was given as an argument, also update the dropdown for angle fitting to BPM data
         if self.spark: self.ls_dropdown.options = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob]
+
+    def create_options_controls(self):
+        """
+        Controls for the third row: first element, envelope size, plane
+        """
+        # Dropdown to select an IR to show
+        self.main_ir_dropdown = Dropdown(
+                    options=['all', 'IR1', 'IR2', 'IR3', 'IR4', 'IR5', 'IR6', 'IR7', 'IR8'],
+                    description='IR:',
+                    layout=Layout(width='200px'),
+                    disabled=False)
+        
+        # Text widget to specify cycle start
+        self.cycle_input = Text(
+            value='',                               # Initial value (empty string)
+            description='First element:',           # Label for the widget
+            placeholder='e. g. ip3',                # Placeholder text when the input is empty
+            style={'description_width': 'initial'}, # Adjust the width of the description label
+            layout=Layout(width='300px'))           # Set the width of the widget
+
+        # Input for changing the envelope size
+        self.envelope_input = FloatText(
+                value=4,                    # Initial value (4 sigma)
+                description='Envelope size [σ]:',    # Label for the widget 
+                style={'description_width': 'initial'}, # Adjust the width of the description label
+                layout=Layout(width='300px'))           # Set the width of the widget
+        
+        # Dropdown to select a plane
+        self.plane_dropdown = Dropdown(
+            options=['horizontal', 'vertical'],
+            description='Plane:')
+        
+        # Button to switch between horizontal and vertical planes
+        self.apply_changes_button = Button(
+            description="Apply changes", 
+            style=widgets.ButtonStyle(button_color='pink'))
+        
+        # Assign method to the button
+        self.apply_changes_button.on_click(self.on_apply_changes_button_clicked)
+
+        # Group in a list and add to widget list
+        options_controls = [self.main_ir_dropdown, self.cycle_input, self.envelope_input, self.plane_dropdown, self.apply_changes_button]
+        self.widgets += options_controls
+
+        second_row_layout = HBox(
+            options_controls,
+            layout=Layout(
+                justify_content='space-around', # Distribute space evenly
+                align_items='center',           # Center align all items
+                width='100%',                   # Full width of the container
+                padding='10px',                 # Add padding around controls
+                border='solid 2px #ccc'))       # Border around the HBox
+        
+        return second_row_layout
+
+    def define_main_tab(self):
+        """
+        Groups all the controls for the main tab into a vbox
+        """
+        # Create layout for the first row of controls
+        file_chooser_layout = self.create_file_choosers()
+        # Create layout for the first row of controls
+        # Corresponds to the knobs for crossing angle and separation bumps
+        first_row_layout = self.create_knob_controls()
+        # Create layout for the second row of controls
+        second_row_layout = self.create_options_controls()
+
+        # Group main controls into a Vbox
+        main_vbox = VBox(
+            [widgets.HTML("<h4>Select and load files</h4>"), 
+             file_chooser_layout,
+             widgets.HTML("<h4>Select and adjust knobs</h4>"), 
+             first_row_layout, 
+             self.knob_box, 
+             widgets.HTML("<h4>Change line and graph properties</h4>"), 
+             second_row_layout],
+            layout=Layout(
+                justify_content='space-around', # Distribute space evenly
+                width='100%',                   # Full width of the container
+                padding='10px',                 # Add padding around controls
+                border='solid 2px #ccc'))       # Border around the HBox
+        
+        return main_vbox
 
     def create_local_bump_controls(self):
         """
@@ -174,61 +274,162 @@ class InteractiveTool():
 
         Includes controls to define a bump using kicks given in urad from YASP and then to scale it.
         """
-        
         # Dictionary to hold all created bumps (key: bump_name, value: VBox containing bump details)
         self.bump_dict = {}
         
+        # First row
         # Button to define a new bump
-        self.define_bump_button = widgets.Button(description="Define a new bump", style=widgets.ButtonStyle(button_color='pink'))
+        self.define_bump_button = Button(
+            description="Define a new bump", 
+            style=widgets.ButtonStyle(button_color='pink'))
+        # Assign a method
         self.define_bump_button.on_click(self.define_bump)
 
         # Button to remove al bumps
-        self.remove_bumps_button = Button(description="Remove all bumps", style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)'))
+        self.remove_bumps_button = Button(
+            description="Remove all bumps", 
+            style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)'))
+        #Assign a method
         self.remove_bumps_button.on_click(self.on_remove_bumps_button_clicked)
 
-        # Dropdown to select the bump to which knobs will be added
-        self.bump_selection_dropdown = widgets.Dropdown(options=[], description="Select Bump", layout=widgets.Layout(width='200px'))
+        first_row_controls = [self.define_bump_button, self.remove_bumps_button]
+        self.widgets += first_row_controls 
 
-        # Dropdown to select the knob
-        self.bump_knob_dropdown = widgets.Dropdown(options=[], description="Corrector", layout=widgets.Layout(width='200px'))
+        # First row layout
+        first_row_box = widgets.HBox(
+            first_row_controls, 
+            layout=widgets.Layout(
+                justify_content='space-around', 
+                align_items='center', 
+                width='100%', 
+                padding='10px', 
+                border='solid 2px #ccc'))
         
-        # Dropdown to select the plane 
-        # Used only to sort the knobs in the self.bump_knob_dropdown
-        self.sort_knobs_plane_dropdown = widgets.Dropdown(options=['horizontal', 'vertical'], description="Plane", layout=widgets.Layout(width='200px'))
+        # Second row
+        # Dropdown to select the bump to which knobs will be added
+        self.bump_selection_dropdown = Dropdown(
+            options=[], 
+            description="Select Bump:", 
+            layout=widgets.Layout(width='200px'))
+        
+        # Dropdowns to sort correctors
+        self.sort_knobs_plane_dropdown = Dropdown(
+            options=['horizontal', 'vertical'], 
+            description="Plane:", 
+            layout=widgets.Layout(width='200px'))
+        
+        self.sort_knobs_beam_dropdown = Dropdown(
+            options=['beam 1', 'beam 2'], 
+            description="Beam:", 
+            layout=widgets.Layout(width='200px'))
+        
+        self.sort_knobs_regions_dropdown = Dropdown(
+            options=['l1','r1','l2','r2','l3','r3','l4','r4','l5','r5','l6','r6','l7','r7','l8','r8'], 
+            description="Region:", 
+            layout=widgets.Layout(width='200px'))
 
-        # Dropdown to select the beam
-        # Used only to sort the knobs in the self.bump_knob_dropdown
-        self.sort_knobs_beam_dropdown = widgets.Dropdown(options=['beam 1', 'beam 2'], description="Beam", layout=widgets.Layout(width='200px'))
-
-        # Observe plane and beam dropdowns to sort
+        # Dropdown to select the corrector
+        self.bump_knob_dropdown = Dropdown(
+            options=[], 
+            description="Corrector:", 
+            layout=widgets.Layout(width='200px'))
+        
+        # Observe plane, beam, and region dropdowns to sort
         self.sort_knobs_plane_dropdown.observe(self.update_bump_knob_dropdown, names='value')
         self.sort_knobs_beam_dropdown.observe(self.update_bump_knob_dropdown, names='value')
+        self.sort_knobs_regions_dropdown.observe(self.update_bump_knob_dropdown, names='value')
 
         # Button to add the selected knob
-        self.add_bump_knob_button = widgets.Button(description="Add corrector", layout=widgets.Layout(width='150px'), style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'))
+        self.add_bump_knob_button = Button(
+            description="Add corrector", 
+            layout=widgets.Layout(width='150px'), 
+            style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'))
+        # Assign a method
         self.add_bump_knob_button.on_click(self.add_knob)
 
-        # Create the main container that will hold all the dynamically added VBox widgets
+        # Box to store all the bumps definitions, initially empty
         self.main_bump_box = widgets.VBox([])
 
+        second_row_controls = [self.bump_selection_dropdown, widgets.HTML("Sort correctors by plane, beam, region:"),
+                            self.sort_knobs_plane_dropdown, self.sort_knobs_beam_dropdown, self.sort_knobs_regions_dropdown, 
+                            self.bump_knob_dropdown, self.add_bump_knob_button]
+        self.widgets += second_row_controls
+
+        # Second row layout
+        second_row_box = widgets.HBox(
+            second_row_controls, 
+                layout=widgets.Layout(
+                justify_content='space-around', 
+                align_items='center', 
+                width='100%', 
+                padding='10px', 
+                border='solid 2px #ccc'))
+
+        # Third row
         # Dropdown to select bump for final addition to the line and scaling
-        self.final_bump_dropdown = widgets.Dropdown(options=[], description="Final Bump", layout=widgets.Layout(width='200px'))
+        self.final_bump_dropdown = Dropdown(
+            options=[], 
+            description="Final Bump", 
+            layout=widgets.Layout(width='200px'))
         
         # Button to add the selected bump to the final container
-        self.add_final_bump_button = widgets.Button(description="Add Bump", layout=widgets.Layout(width='150px'), style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'))
+        self.add_final_bump_button = Button(
+            description="Add Bump", 
+            layout=widgets.Layout(width='150px'), 
+            style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'))
+        # Assign a method
         self.add_final_bump_button.on_click(self.add_final_bump)
 
-        # Container to hold bumps added to the final HBox with floats
-        self.final_bump_container = widgets.GridBox([], layout=widgets.Layout(grid_template_columns="repeat(4, 500px)", # 4 boxes each 500 px wide
-                                                                          width='100%'))
-
         # Button to apply operation
-        self.bump_apply_button = widgets.Button(description="Apply", style=widgets.ButtonStyle(button_color='pink'), layout=widgets.Layout(width='150px'))
+        self.bump_apply_button = Button(
+            description="Apply", 
+            style=widgets.ButtonStyle(button_color='pink'), 
+            layout=widgets.Layout(width='150px'))
+        # Assign a method
         self.bump_apply_button.on_click(self.apply_operation)
 
-        # I'm only adding the widgets that need to be disabled initially
-        self.widgets += [self.define_bump_button, self.remove_bumps_button, self.add_bump_knob_button, self.add_final_bump_button, self.bump_apply_button]
+        # Container to hold bumps added to the final HBox with floats
+        self.final_bump_container = widgets.GridBox([], 
+            layout=widgets.Layout(
+                grid_template_columns="repeat(4, 500px)", # 4 boxes each 500 px wide
+                width='100%'))
+
+        # Add all widgets to the list
+        third_row_controls = [self.final_bump_dropdown, self.add_final_bump_button, self.bump_apply_button]
+        self.widgets += third_row_controls
+    
+        # Controls for the final bump section
+        third_row_box = widgets.HBox(
+            third_row_controls, 
+            layout=widgets.Layout(
+                justify_content='space-around', 
+                align_items='center', 
+                width='100%', 
+                padding='10px', 
+                border='solid 2px #ccc'))
         
+        return first_row_box, second_row_box, third_row_box
+
+    def on_remove_bumps_button_clicked(self, b):
+        """
+        Handles event of clicking Remove all bumps button
+        """
+        self.aperture_data.reset_all_acb_knobs()
+        self.selected_mcbs_hbox.children = ()  # Clear the HBox
+        self.selected_mcbs_list.clear()  # Clear the list
+        self.update_graph()
+        
+    def update_bump_knob_dropdown(self, change):
+        """
+        Method to sort the knobs in bump_knob_dropdown by beam and plane
+        """
+        if hasattr(self, 'aperture_data'):
+            beam = self.sort_knobs_beam_dropdown.value
+            plane = self.sort_knobs_plane_dropdown.value
+            region = self.sort_knobs_regions_dropdown.value
+
+            self.bump_knob_dropdown.options = self.aperture_data.sort_acb_knobs_by_region(beam, plane, region)
+
     def define_bump(self, b):
         """
         Method to define a new bump with kicks
@@ -339,47 +540,204 @@ class InteractiveTool():
         # Twiss and update the graph
         self.aperture_data.twiss()
         self.update_graph()
+    
+    def define_local_bump_tab(self):
+        """
+        Groups all the widgets for the local bump into one vbox
+        """
+        first_row_box, second_row_box, third_row_box = self.create_local_bump_controls()
+
+        # Display the layout
+        local_bump_box = widgets.VBox([
+            widgets.HTML("<h4>Define and configure bumps</h4>"),
+            first_row_box,
+            second_row_box,
+            self.main_bump_box,
+            widgets.HTML("<h4>Select bumps for final calculation</h4>"),
+            third_row_box,
+            self.final_bump_container
+        ], layout=widgets.Layout(
+            border='solid 2px #ccc', 
+            padding='10px', 
+            width='100%'))
         
-    def create_options_controls(self):
+        return local_bump_box
+    
+    def create_bump_matching_controls(self):
         """
-        Controls for the third row: first element, envelope size, plane
+        Creates widgets for adding a local bump with line.match
         """
-        # Create a text widget to specify cycle start
-        self.cycle_input = Text(
+        # Input to type the element at wchich the peak of the bump is
+        self.local_bump_element_input = Text(
             value='',                               # Initial value (empty string)
-            description='First element:',           # Label for the widget
-            placeholder='e. g. ip3',                # Placeholder text when the input is empty
+            description='Element:',                 # Label for the widget       
             style={'description_width': 'initial'}, # Adjust the width of the description label
-            layout=Layout(width='300px'))           # Set the width of the widget
-
-        self.envelope_input = FloatText(
-                value=4,                    # Initial value (4 sigma)
-                description='Envelope size [σ]:',    # Label for the widget 
-                style={'description_width': 'initial'}, # Adjust the width of the description label
-                layout=Layout(width='300px'))           # Set the width of the widget
+            layout=Layout(width='200px'))  
         
-        # Create a dropdown to select a plane
-        self.plane_dropdown = Dropdown(
-            options=['horizontal', 'vertical'],
-            description='Select plane:',
-            disabled=False)
-        
-        # Button to switch between horizontal and vertical planes
-        self.apply_changes_button = Button(
-            description="Apply changes", 
-            style=widgets.ButtonStyle(button_color='pink')
-        )
-        # Assign method to the button
-        self.apply_changes_button.on_click(self.on_apply_changes_button_clicked)
+        # Input to type the size of the bump
+        self.bump_size_input = FloatText(
+            description=r"Bump size [mm]:",    
+            style={'description_width': 'initial'},
+            layout=widgets.Layout(width='200px')) 
 
-        # Group in a list for later
-        self.options_controls = [self.cycle_input, self.envelope_input, self.plane_dropdown, self.apply_changes_button]
-        self.widgets += self.options_controls
+        first_row_controls = [self.local_bump_element_input, self.bump_size_input, self.remove_bumps_button]
+        self.widgets += first_row_controls
+        
+        # Controls for the final bump section
+        first_row_box = widgets.HBox(
+            first_row_controls, 
+            layout=widgets.Layout(
+                justify_content='space-around', 
+                align_items='center', 
+                width='100%', 
+                padding='10px', 
+                border='solid 2px #ccc'))
+          
+        # Dropdown to sort mcbs by beam
+        self.sort_mcbs_beam_dropdown = Dropdown(
+            options=['beam 1', 'beam 2'], 
+            description='Beam:', 
+            layout=widgets.Layout(width='200px'))
+        # Dropdown to sort mcbs by plane
+        self.sort_mcbs_plane_dropdown = Dropdown(
+            options=['horizontal', 'vertical'], 
+            description='Plane:', 
+            layout=widgets.Layout(width='200px'))
+        # Dropdown to sort mcbs by region
+        self.sort_mcbs_regions_dropdown = Dropdown(
+            options=['l1','r1','l2','r2','l3','r3','l4','r4','l5','r5','l6','r6','l7','r7','l8','r8'], 
+            description="Region:", 
+            layout=widgets.Layout(width='200px'))
+        
+        # Observe plane, beam, and region dropdowns to sort
+        self.sort_mcbs_plane_dropdown.observe(self.update_bump_mcbs_dropdown, names='value')
+        self.sort_mcbs_beam_dropdown.observe(self.update_bump_mcbs_dropdown, names='value')
+        self.sort_mcbs_regions_dropdown.observe(self.update_bump_mcbs_dropdown, names='value')
+        
+        # Dropdown to select mcbs
+        self.mcbs_dropdown = Dropdown(
+            options=[], 
+            description="Corrector:", 
+            layout=widgets.Layout(width='200px'))
+        
+        # Button to add the selected mcbs to the container
+        self.add_mcbs_button = Button(
+            description="Add corrector", 
+            layout=widgets.Layout(width='150px'), 
+            style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'))
+        # Assign a method
+        self.add_mcbs_button.on_click(self.add_mcbs_button_clicked)
+
+        # Create an HBox to display selected correctors
+        self.selected_mcbs_hbox = HBox(
+            layout=widgets.Layout(
+                width='100%', 
+                padding='10px', 
+                border='solid 2px #ccc'))
+        self.selected_mcbs_list = []  # List to keep track of selected correctors
+
+        # Button to perform matching
+        self.match_button = Button(
+            description="Match", 
+            style=widgets.ButtonStyle(button_color='pink'))
+        # Assign a function
+        self.match_button.on_click(self.match_button_clicked)  
+
+        second_row_controls = [self.sort_mcbs_beam_dropdown, self.sort_mcbs_plane_dropdown, self.sort_mcbs_regions_dropdown,
+                               self.mcbs_dropdown, self.add_mcbs_button, self.match_button]
+        self.widgets += second_row_controls
+        
+        # Controls for the final bump section
+        second_row_box = widgets.HBox(
+            second_row_controls, 
+            layout=widgets.Layout(
+                justify_content='space-around', 
+                align_items='center', 
+                width='100%', 
+                padding='10px', 
+                border='solid 2px #ccc'))
+        
+        return first_row_box, second_row_box          
+
+    def update_bump_mcbs_dropdown(self, change):
+        """
+        Method to sort the knobs in bump_knob_dropdown by beam and plane
+        """
+        if hasattr(self, 'aperture_data'):
+            beam = self.sort_mcbs_beam_dropdown.value
+            plane = self.sort_mcbs_plane_dropdown.value
+            region = self.sort_mcbs_regions_dropdown.value
+
+            self.mcbs_dropdown.options = self.aperture_data.sort_mcbs_by_region(beam, plane, region)
+    
+    def match_button_clicked(self, b):
+
+        element = self.local_bump_element_input.value
+        size = self.bump_size_input.value
+        beam = self.sort_mcbs_beam_dropdown.value
+        plane = self.sort_mcbs_plane_dropdown.value
+
+        self.aperture_data.match_local_bump(element, self.selected_mcbs_list, size, beam, plane)
+        self.update_graph()
+
+    def add_mcbs_button_clicked(self, b):
+
+        corrector_name = self.mcbs_dropdown.value
+
+        if corrector_name not in self.selected_mcbs_list:
+            self.selected_mcbs_list.append(corrector_name)  # Add to the list
+            # Create a horizontal box for the corrector label and its remove button
+            corrector_box = HBox(
+                [Label(
+                    value=corrector_name,
+                    layout=Layout(
+                        width='150px',  # Set the width of the label
+                        margin='5px',
+                        padding='5px',
+                        border='solid 1px #ccc',
+                        border_radius='5px',
+                        display='flex',  # Enable flexbox layout
+                        justify_content='center',
+                        align_items='center'),),
+                    # Create a remove button for the specific corrector
+                Button(
+                    description='Remove',
+                    style=widgets.ButtonStyle(button_color='rgb(249, 123, 114)'),
+                    layout=Layout(margin='5px'))])
+            
+            # Add event handler for the remove button
+            corrector_box.children[1].on_click(lambda b, name=corrector_name: self.remove_corrector(name, corrector_box))
+            self.selected_mcbs_hbox.children += (corrector_box,)  # Add the corrector box to HBox
+    
+    def remove_corrector(self, corrector_name, corrector_box):
+        """Function to remove the specified corrector from the HBox and list."""
+        self.selected_mcbs_hbox.children = [box for box in self.selected_mcbs_hbox.children if box.children[0].value != corrector_name]  # Remove from HBox
+        self.selected_mcbs_list.remove(corrector_name)  # Remove from the list
+
+    def define_bump_matching_tab(self):
+        """
+        Groups all the widgets for the local bump into one vbox
+        """
+        first_row_box, second_row_box = self.create_bump_matching_controls()
+
+        # Display the layout
+        bump_matching_box = widgets.VBox([
+            widgets.HTML("<h4>Add a local bump using line.match</h4>"),
+            first_row_box, second_row_box, 
+            widgets.HTML("<h4>Correctors to be varied for matching</h4>"),
+            self.selected_mcbs_hbox],
+            layout=widgets.Layout(
+                border='solid 2px #ccc', 
+                padding='10px', 
+                width='100%'))
+            
+        return bump_matching_box
 
     def create_2d_plot_controls(self):
         """
         Create widgets for the cross-section
         """
+        # First row
         # Element at which the cross-section will be visualised
         self.element_input = Text(
             value='',                               # Initial value (empty string)
@@ -388,70 +746,138 @@ class InteractiveTool():
             style={'description_width': 'initial'}, # Adjust the width of the description label
             layout=Layout(width='200px'))  
         
-        # Button to generate a new plot
-        self.generate_2d_plot_button = Button(
-            description="Generate", 
-            style=widgets.ButtonStyle(button_color='pink'), 
-            tooltip='Generate a new plot of the 2D view'
-        )
-        
-        # Button to add a new trace to the existing plot
-        self.add_trace_to_2d_plot_button = Button(
-            description="Add trace", 
-            style=widgets.ButtonStyle(button_color='pink'), 
-            tooltip='Add a 2D view to the existing plot'
-        )    
+        self.aper_tolerances_dropdown = Dropdown(
+            options=['Default aperture tolerances', 'Customise aperture tolerances'],
+            description='')
+        # Assign a method to add a row for aper tolerances inputs
+        self.aper_tolerances_dropdown.observe(self.toggle_aper_tols, names='value')
 
+        # Group into a hbox and add to widgets
+        first_row_controls = [self.element_input, self.aper_tolerances_dropdown]
+        self.widgets += first_row_controls
+
+        element_and_aper_toggle = widgets.HBox(
+            first_row_controls, 
+            layout=widgets.Layout(padding='5px', justify_content='space-around'))
+
+        # Second row
+        # Widgets for n1 calculations
+        self.delta_co_input = FloatText(
+            description=r"$\Delta$co [m]", 
+            layout=widgets.Layout(width='200px'), 
+            value=0.002)  
+        self.delta_beta_input = FloatText(
+            description=r"$\Delta \beta$ [%]", 
+            layout=widgets.Layout(width='200px')) 
+        self.delta_input = FloatText(
+            description=r"$\delta$", 
+            layout=widgets.Layout(width='200px')) 
+        
+        # Aperture tolerances, only visible if 'Customise aperture tolerances' selected
+        self.rtol_input = FloatText(
+            description="rtol", 
+            layout=widgets.Layout(width='200px')) 
+        self.xtol_input = FloatText(
+            description="xtol", 
+            layout=widgets.Layout(width='200px')) 
+        self.ytol_input = FloatText(
+            description="ytol", 
+            layout=widgets.Layout(width='200px')) 
+        
+        error_controls = [self.delta_co_input, self.delta_beta_input, self.delta_input]
+        aper_tols_controls = [self.rtol_input, self.xtol_input, self.ytol_input]
+        self.widgets += error_controls+aper_tols_controls
+        
+        # Group into a hbox
+        error_inputs = HBox(
+            error_controls, 
+            layout=widgets.Layout(padding='5px', justify_content='space-around'))
+        self.tol_inputs = HBox(
+            aper_tols_controls, 
+            layout=widgets.Layout(padding='5px', justify_content='space-around'))
+        # Initially hide the HBox
+        self.tol_inputs.layout.display = 'none'
+        
+        # Third row
+        # Droptdown to select for which beam n1 is calculated
+        self.beam_dropdown_for_n1 = Dropdown(
+            options=['beam 1', 'beam 2'], 
+            description='Beam:', 
+            layout=widgets.Layout(width='200px'))
+        
+        # Button to calculate n1
+        self.calculate_n1_button = Button(
+            description="Calculate n1", 
+            style=widgets.ButtonStyle(button_color='pink'))
+        # Assign a function
+        self.calculate_n1_button.on_click(self.calculate_n1_button_clicked)  
+
+        # Output with n1 result
+        self.n1_output = widgets.Output()
+        with self.n1_output:
+            display(Latex(f'Horizontal: $n_1 = $ Vertical: $n_1 = $ '))
+
+        n1_controls = [self.beam_dropdown_for_n1, self.calculate_n1_button, self.n1_output]
+        self.widgets += n1_controls
+        n1_button_and_output = widgets.HBox(
+            n1_controls, 
+            layout=widgets.Layout(padding='5px', justify_content='space-around'))
+
+        # Last row
+        # Switch to toggle between showing errors on the 2d view graph and not
         self.toggle_switch = widgets.ToggleButton(
             value=False,
             description='Errors not shown',
             disabled=False,
             button_style='',  # 'success', 'info', 'warning', 'danger' or ''
             tooltip='Toggle me',
-            icon='times'
-        )
+            icon='times')
         # Observe changes in the toggle button
         self.toggle_switch.observe(self.on_toggle_change, 'value')
-
-        self.add_and_generate_2d_plot_buttons = widgets.HBox([self.toggle_switch, self.generate_2d_plot_button, self.add_trace_to_2d_plot_button], 
-                                                 layout=widgets.Layout(align_items='stretch', justify_content='space-around', width='600px'))
-
+        
+        # Button to generate a new plot
+        self.generate_2d_plot_button = Button(
+            description="Generate", 
+            style=widgets.ButtonStyle(button_color='pink'), 
+            tooltip='Generate a new plot of the 2D view')
+        # Button to add a new trace to the existing plot
+        self.add_trace_to_2d_plot_button = Button(
+            description="Add trace", 
+            style=widgets.ButtonStyle(button_color='pink'), 
+            tooltip='Add a 2D view to the existing plot')  
         # Assign functions to the buttons
         self.generate_2d_plot_button.on_click(self.generate_2d_plot_button_clicked)
-        self.add_trace_to_2d_plot_button.on_click(self.add_trace_to_2d_plot_button_clicked)  
-
-        # Widgets for n1 calculations
-        self.delta_co_input = widgets.FloatText(description=r"$\Delta$co [m]", layout=widgets.Layout(width='200px'), value=0.002)  
-        self.delta_beta_input = widgets.FloatText(description=r"$\Delta \beta$ [%]", layout=widgets.Layout(width='200px')) 
-        self.delta_input = widgets.FloatText(description=r"$\delta$", layout=widgets.Layout(width='200px')) 
-        self.error_inputs = widgets.HBox([self.delta_co_input, self.delta_beta_input, self.delta_input], 
-                                         layout=widgets.Layout(padding='5px', justify_content='space-around'))
-
-        # Button to generate a new plot
-        self.calculate_n1_button = Button(
-            description="Calculate n1", 
-            style=widgets.ButtonStyle(button_color='pink'))
+        self.add_trace_to_2d_plot_button.on_click(self.add_trace_to_2d_plot_button_clicked)    
         
-        self.calculate_n1_button.on_click(self.calculate_n1_button_clicked)  
+        # Add to self.widgets and group into a hbox
+        last_row_controls = [self.toggle_switch, self.generate_2d_plot_button, self.add_trace_to_2d_plot_button]
+        self.widgets += last_row_controls
 
-        self.beam_dropdown_for_n1 = widgets.Dropdown(options=['beam 1', 'beam 2'], description='Beam:', 
-                                                     layout=widgets.Layout(width='200px'))
-
-        self.element_and_beam_for_n1 = widgets.HBox([self.element_input, self.beam_dropdown_for_n1], 
-                                                 layout=widgets.Layout(padding='5px', justify_content='space-around'))
-
-        # Output with best fit angle and its uncertainty
-        self.n1_output = widgets.Output()
-        with self.n1_output:
-            display(Latex(f'Horizontal: $n_1 = $ Vertical: $n_1 = $ '))
-        self.n1_button_and_output = widgets.HBox([self.calculate_n1_button, self.n1_output], 
-                                                 layout=widgets.Layout(align_items='stretch'))
+        add_and_generate_2d_plot_buttons = HBox(
+            last_row_controls, 
+            layout=widgets.Layout(align_items='stretch', justify_content='space-around', width='600px'))
         
-        self.widgets += [self.generate_2d_plot_button, self.add_trace_to_2d_plot_button, self.calculate_n1_button]
+        # Group main controls into a Vbox
+        cross_section_vbox = VBox(
+            [widgets.HTML("<h4>Show 2D view at the specified element</h4>"), element_and_aper_toggle, error_inputs, self.tol_inputs, n1_button_and_output, add_and_generate_2d_plot_buttons],
+            layout=Layout(
+                justify_content='space-around', # Distribute space evenly
+                align_items='center',           # Center align all items
+                width='40%',                   # Full width of the container
+                padding='0px',                 # Add padding around controls
+                border='solid 2px #ccc'))       # Border around the HBox
+        
+        return cross_section_vbox
+
+    def toggle_aper_tols(self, change):
+        if change['new'] == 'Customise aperture tolerances':
+            self.tol_inputs.layout.display = 'flex'  # Show the HBox
+        else:
+            self.tol_inputs.layout.display = 'none'  # Hide the HBox
 
     def on_toggle_change(self, change):
         self.toggle_switch.description = 'Errors shown' if self.toggle_switch.value else 'Errors not shown'
-        self.toggle_switch = 'check' if self.toggle_switch.value else 'times'
+        self.toggle_switch.icon = 'check' if self.toggle_switch.value else 'times'
 
     def calculate_n1_button_clicked(self, b):
 
@@ -462,12 +888,21 @@ class InteractiveTool():
             element = self.element_input.value
             delta_co = self.delta_co_input.value
 
-            _, _, n1_x, _, _, n1_y = self.aperture_data.calculate_n1(delta_beta, delta, beam, element, delta_co)
+            if self.aper_tolerances_dropdown.value == 'Customise aperture tolerances':
+                rtol, xtol, ytol = self.rtol_input.value, self.xtol_input.value, self.ytol_input.value
+            else: rtol, xtol, ytol = None, None, None
 
-            with self.n1_output:
-                self.n1_output.clear_output()  # Clear previous output
-                display(Latex(f'Horizontal: $n_1 =$ {n1_x:.2f}$\sigma$ Vertical: $n_1 =$ {n1_y:.2f}$\sigma$'))
-        
+            try:
+                _, _, n1_x, _, _, n1_y = self.aperture_data.calculate_n1(delta_beta, delta, beam, element, rtol, xtol, ytol, delta_co)
+
+                with self.n1_output:
+                    self.n1_output.clear_output()  # Clear previous output
+                    display(Latex(f'Horizontal: $n_1 =$ {n1_x:.2f}$\sigma$ Vertical: $n_1 =$ {n1_y:.2f}$\sigma$'))
+            except: 
+                with self.n1_output:
+                    self.n1_output.clear_output()  # Clear previous output
+                    display(Latex(f'Incorrect element'))
+
         else: print_and_clear('Load the aperture data')
 
     def add_trace_to_2d_plot_button_clicked(self, b):
@@ -510,39 +945,44 @@ class InteractiveTool():
             delta_co = self.delta_co_input.value
         else: delta_beta, delta, delta_co = 0, 0, 0
 
+        if self.aper_tolerances_dropdown.value == 'Customise aperture tolerances':
+            rtol, xtol, ytol = self.rtol_input.value, self.xtol_input.value, self.ytol_input.value
+        else: rtol, xtol, ytol = None, None, None
+
         print_and_clear('Generating the cross-section...')
         # Generate and store as attributes the cross-sctions
-        self.cross_section_b1 = generate_2d_plot(element, 'beam 1', self.aperture_data, n, 450, 450, delta_beta, delta, delta_co)
-        self.cross_section_b2 = generate_2d_plot(element, 'beam 2', self.aperture_data, n, 450, 450, delta_beta, delta, delta_co)
-        self.cross_section_both = generate_2d_plot(element, 'both', self.aperture_data, n, 450, 450, delta_beta, delta, delta_co)
+        self.cross_section_b1 = generate_2d_plot(element, 'beam 1', self.aperture_data, n, rtol, xtol, ytol, delta_beta, delta, delta_co, 450, 450)
+        self.cross_section_b2 = generate_2d_plot(element, 'beam 2', self.aperture_data, n, rtol, xtol, ytol, delta_beta, delta, delta_co, 450, 450)
+        self.cross_section_both = generate_2d_plot(element, 'both', self.aperture_data, n, rtol, xtol, ytol, delta_beta, delta, delta_co, 450, 450)
 
         self.cross_section_container.children = [self.cross_section_b1, self.cross_section_b2, self.cross_section_both]
+    
+    def define_2d_view_tab(self):
+        """
+        Groups all the widgets for the 2d view into one hbox
+        """
+        cross_section_vbox = self.create_2d_plot_controls()
         
-    def on_remove_bumps_button_clicked(self, b):
-        """
-        Handles event of clicking Remove all bumps button
-        """
-        self.aperture_data.reset_all_acb_knobs()
-        self.update_graph()
+        self.cross_section_container = HBox(
+            [self.cross_section_b1, self.cross_section_b2, self.cross_section_both],
+            layout=Layout(
+            justify_content='center',
+            align_items='center',
+            width='80%',
+            padding='0px',
+            border='solid 2px #eee'))
         
-    def update_bump_knob_dropdown(self, change):
-        """
-        Method to sort the knobs in bump_knob_dropdown by beam and plane
-        """
-        if hasattr(self, 'aperture_data'):
-            beam = self.sort_knobs_beam_dropdown.value
-            plane = self.sort_knobs_plane_dropdown.value
-            if plane == 'horizontal': 
-                if beam == 'beam 1': 
-                    self.bump_knob_dropdown.options = self.aperture_data.acbh_knobs_b1['knob']
-                elif beam == 'beam 2': 
-                    self.bump_knob_dropdown.options = self.aperture_data.acbh_knobs_b2['knob']
-            if plane == 'vertical':
-                if beam == 'beam 1': 
-                    self.bump_knob_dropdown.options = self.aperture_data.acbv_knobs_b1['knob']
-                elif beam == 'beam 2': 
-                    self.bump_knob_dropdown.options = self.aperture_data.acbv_knobs_b2['knob']
+        full_cross_section_box = HBox(
+            [cross_section_vbox, self.cross_section_container],
+            layout=Layout(
+                justify_content='center',   # Center items horizontally, allowing space on sides
+                align_items='stretch',      # Avoid extra vertical space
+                width='100%',               # Full width of the container
+                padding='0px 10px',         # Padding only on left and right, none vertically
+                border='solid 2px #ccc'))
 
+        return full_cross_section_box
+    
     def create_time_widgets(self):
         """
         Create and configure date and time input widgets.
@@ -569,97 +1009,102 @@ class InteractiveTool():
         If the `spark`  Update UI components
         """
         # Only add timber buttons if spark given as an argument
-        if self.spark:
 
-            self.collimator_data = CollimatorsData(self.spark)
-            self.BPM_data = BPMData(self.spark)
+        self.collimator_data = CollimatorsData(self.spark)
+        self.BPM_data = BPMData(self.spark)
             
-            # Create buttons to load BPM and collimator data
-            self.load_BPMs_button = Button(
+        # Time selection widgets
+        self.create_time_widgets()
+        # Button to load BPM data
+        self.load_BPMs_button = Button(
                 description="Load BPMs",
                 style=widgets.ButtonStyle(button_color='pink'),
-                tooltip='Load BPM data from timber for the specified time.'
-            )
-            self.load_BPMs_button.on_click(self.on_load_BPMs_button_clicked)
-
-            self.load_cols_button = Button(
+                tooltip='Load BPM data from timber for the specified time.')
+        self.load_BPMs_button.on_click(self.on_load_BPMs_button_clicked)
+        # Button to load collimator data
+        self.load_cols_button = Button(
                 description="Load collimators",
                 style=widgets.ButtonStyle(button_color='pink'),
-                tooltip='Load collimator data from timber for the specified time.'
-            )
-            self.load_cols_button.on_click(self.on_load_cols_button_clicked)
+                tooltip='Load collimator data from timber for the specified time.')
+        self.load_cols_button.on_click(self.on_load_cols_button_clicked)
 
-            # Time selection widgets
-            self.create_time_widgets()
+        # Define layout depending if timber buttons present or not
+        timber_row_controls = [self.date_picker, self.time_input, self.load_cols_button, self.load_BPMs_button]
+        self.widgets += timber_row_controls
 
-            # Define layout depending if timber buttons present or not
-            timber_row_controls = [self.date_picker, self.time_input, self.load_cols_button, self.load_BPMs_button]
-            self.widgets += timber_row_controls
-
-        else: self.BPM_data, self.collimator_data, timber_row_controls = None, None, None
-            
-        self.timber_row_controls = timber_row_controls
+        timber_row_layout = HBox(
+                timber_row_controls,
+                layout=Layout(
+                    justify_content='space-around', # Distribute space evenly
+                    align_items='center',           # Center align all items
+                    width='100%',                   # Full width of the container
+                    padding='10px',                 # Add padding around controls
+                    border='solid 2px #ccc'))       # Border around the HBox
+        
+        return timber_row_controls
 
     def create_ls_controls(self):
         """
         Initialises controls for least squares fitting line into BPM data
         """
-        if self.spark: 
-            angle_knobs = []
-
-            # Dropdown to select whic angle to vary in the optimisation
-            self.ls_dropdown = Dropdown(
-                    options=angle_knobs,
+        # Dropdown to select which angle to vary in the optimisation
+        self.ls_dropdown = Dropdown(
+                    options=[],
                     description='Select knob:',
                     layout=Layout(width='200px'),
                     disabled=False)
                 
-            # Float box to input the inital guess 
-            self.init_angle_input = FloatText(
+        # Float box to input the inital guess 
+        self.init_angle_input = FloatText(
                     value=0,                    # Initial value (empty string)
                     description='Initial guess:',    # Label for the widget 
                     style={'description_width': 'initial'}, # Adjust the width of the description label
                     layout=Layout(width='150px'))           # Set the width of the widget
 
-            # Dropdown to select IR for fitting
-            self.ir_dropdown = Dropdown(
+        # Dropdown to select IR for fitting
+        self.ir_dropdown = Dropdown(
                     options=['IR1', 'IR2', 'IR3', 'IR4', 'IR5', 'IR6', 'IR7', 'IR8', 'other'],
                     description='Select knob:',
                     layout=Layout(width='200px'),
                     disabled=False)
+        # Attach the observe function to the dropdown
+        self.ir_dropdown.observe(self.on_ir_dropdown_change, names='value')
 
-            # Attach the observe function to the dropdown
-            self.ir_dropdown.observe(self.on_ir_dropdown_change, names='value')
-
-            # Range slider to specify s
-            self.s_range_slider = widgets.FloatRangeSlider(
-                    value=[0, 26658],
+        # Range slider to specify s
+        self.s_range_slider = widgets.FloatRangeSlider(
+                    value=[0, self.aperture_data.length],
                     min=0.0,
-                    max=26658,
+                    max=self.aperture_data.length,
                     step=1,
                     description='Range:',
                     continuous_update=False,
                     layout=Layout(width='400px'),
-                    readout_format='d'
-                )
+                    readout_format='d')
             
-            self.fit_button = Button(
+        self.fit_button = Button(
                 description="Fit to data", 
                 style=widgets.ButtonStyle(button_color='pink'), 
-                tooltip='Perform least squares fitting.'
-            )
-            self.fit_button.on_click(self.on_fit_button_clicked)
+                tooltip='Perform least squares fitting.')
+        self.fit_button.on_click(self.on_fit_button_clicked)
 
-            # Output with best fit angle and its uncertainty
-            self.result_output = widgets.Output()
+        # Output with best fit angle and its uncertainty
+        self.result_output = widgets.Output()
 
-            # Group controls and append to all widgets
-            ls_row_controls = [self.ls_dropdown, self.init_angle_input, self.ir_dropdown, self.s_range_slider, self.fit_button, self.result_output]
-            self.widgets += ls_row_controls
+        # Group controls and append to all widgets
+        ls_row_controls = [self.ls_dropdown, self.init_angle_input, self.ir_dropdown, self.s_range_slider, self.fit_button, self.result_output]
+        self.widgets += ls_row_controls
 
-            self.ls_row_controls = ls_row_controls
-            
-        else: self.ls_row_controls = None
+        # Create layout for the timber row of controls
+        ls_row_layout = HBox(
+                self.ls_row_controls,
+                layout=Layout(
+                    justify_content='space-around', # Distribute space evenly
+                    align_items='center',           # Center align all items
+                    width='100%',                   # Full width of the container
+                    padding='10px',                 # Add padding around controls
+                    border='solid 2px #ccc'))       # Border around the HBox
+
+        return ls_row_layout
 
     def on_ir_dropdown_change(self, change):
         """
@@ -691,160 +1136,18 @@ class InteractiveTool():
 
             self.update_graph()
 
-    def create_graph_container(self):
-
-        # Create an empty VBox container for the graph
-        self.graph_container = HBox(layout=Layout(
-            justify_content='center',
-            align_items='center',
-            width='100%',
-            padding='10px',
-            border='solid 2px #eee'))
-        
-        self.cross_section_container = HBox(
-            [self.cross_section_b1, self.cross_section_b2, self.cross_section_both],
-            layout=Layout(
-            justify_content='center',
-            align_items='center',
-            width='80%',
-            padding='0px',
-            border='solid 2px #eee'))
-    
-    def define_widget_layout(self):
+    def define_ls_tab(self):
         """
-        Define and arrange the layout of the widgets.
+        Groups all the widgets for the least squares fitting and timber data into one vbox
         """
-        # Create layout for the first row of controls
-        file_chooser_layout = HBox(
-            self.file_chooser_controls,
-            layout=Layout(
-                justify_content='space-around', # Distribute space evenly
-                align_items='flex-start',           # Center align all items
-                width='100%',                   # Full width of the container
-                padding='10px',                 # Add padding around controls
-                border='solid 2px #ccc'))       # Border around the HBox
+        # Create layout for the timber row of controls
+        timber_row_layout = self.initialise_timber_data()
 
-        # Create layout for the first row of controls
-        first_row_layout = HBox(
-            self.knob_controls,
-            layout=Layout(
-                justify_content='space-around', # Distribute space evenly
-                align_items='center',           # Center align all items
-                width='100%',                   # Full width of the container
-                padding='10px',                 # Add padding around controls
-                border='solid 2px #ccc'))       # Border around the HBox
-
-        # Create layout for the second row of controls
-        second_row_layout = HBox(
-            self.options_controls,
-            layout=Layout(
-                justify_content='space-around', # Distribute space evenly
-                align_items='center',           # Center align all items
-                width='100%',                   # Full width of the container
-                padding='10px',                 # Add padding around controls
-                border='solid 2px #ccc'))       # Border around the HBox
-        
-        # Group main controls into a Vbox
-        cross_section_vbox = VBox(
-            [widgets.HTML("<h4>Show 2D view at the specified element</h4>"), self.element_and_beam_for_n1, self.error_inputs, self.n1_button_and_output, self.add_and_generate_2d_plot_buttons],
-            layout=Layout(
-                justify_content='space-around', # Distribute space evenly
-                align_items='center',           # Center align all items
-                width='40%',                   # Full width of the container
-                padding='0px',                 # Add padding around controls
-                border='solid 2px #ccc'))       # Border around the HBox
-        
-        full_cross_section_box = HBox(
-            [cross_section_vbox, self.cross_section_container],
-            layout=Layout(
-                justify_content='center',   # Center items horizontally, allowing space on sides
-                align_items='stretch',      # Avoid extra vertical space
-                width='100%',               # Full width of the container
-                padding='0px 10px',         # Padding only on left and right, none vertically
-                border='solid 2px #ccc'     # Border for the outer HBox
-            )
-        )
-
-        # Group main controls into a Vbox
-        main_vbox = VBox(
-            [widgets.HTML("<h4>Select and load files</h4>"), 
-             file_chooser_layout,
-             widgets.HTML("<h4>Select and adjust knobs</h4>"), 
-             first_row_layout, 
-             self.knob_box, 
-             widgets.HTML("<h4>Change line and graph properties</h4>"), 
-             second_row_layout],
-            layout=Layout(
-                justify_content='space-around', # Distribute space evenly
-                width='100%',                   # Full width of the container
-                padding='10px',                 # Add padding around controls
-                border='solid 2px #ccc'))       # Border around the HBox
-
-        # Main controls layout
-        define_bump_box = widgets.HBox([self.bump_selection_dropdown, self.sort_knobs_plane_dropdown, self.sort_knobs_beam_dropdown, self.bump_knob_dropdown, self.add_bump_knob_button], layout=widgets.Layout(
-            justify_content='space-around', 
-            align_items='center', 
-            width='100%', 
-            padding='10px', 
-            border='solid 2px #ccc'
-        ))
-
-        # Controls for the final bump section
-        final_controls_box = widgets.HBox([self.final_bump_dropdown, self.add_final_bump_button, self.bump_apply_button], layout=widgets.Layout(
-            justify_content='space-around', 
-            align_items='center', 
-            width='100%', 
-            padding='10px', 
-            border='solid 2px #ccc'
-        ))
-        
-        # Main controls layout
-        define_bump_first_row_box = widgets.HBox([self.define_bump_button, self.remove_bumps_button], layout=widgets.Layout(
-            justify_content='space-around', 
-            align_items='center', 
-            width='100%', 
-            padding='10px', 
-            border='solid 2px #ccc'
-        ))
-
-        # Display the layout
-        define_local_bump_box = widgets.VBox([
-            widgets.HTML("<h4>Define and configure bumps</h4>"),
-            define_bump_first_row_box,
-            define_bump_box,
-            self.main_bump_box,
-            widgets.HTML("<h4>Select bumps for final calculation</h4>"),
-            final_controls_box,
-            self.final_bump_container
-        ], layout=widgets.Layout(
-            border='solid 2px #ccc', 
-            padding='10px', 
-            width='100%'
-        ))
-        
-        if self.spark: 
-            # Create layout for the timber row of controls
-            timber_row_layout = HBox(
-                self.timber_row_controls,
-                layout=Layout(
-                    justify_content='space-around', # Distribute space evenly
-                    align_items='center',           # Center align all items
-                    width='100%',                   # Full width of the container
-                    padding='10px',                 # Add padding around controls
-                    border='solid 2px #ccc'))       # Border around the HBox
-
-            # Create layout for the timber row of controls
-            ls_row_layout = HBox(
-                self.ls_row_controls,
-                layout=Layout(
-                    justify_content='space-around', # Distribute space evenly
-                    align_items='center',           # Center align all items
-                    width='100%',                   # Full width of the container
-                    padding='10px',                 # Add padding around controls
-                    border='solid 2px #ccc'))       # Border around the HBox
+        # Create layout for the timber row of controls
+        ls_row_layout = self.create_ls_controls()
             
-            # Group timber controls into a Vbox
-            spark_vbox = VBox(
+        # Group timber controls into a Vbox
+        spark_vbox = VBox(
             [widgets.HTML("<h4>Load collimator and BPM data</h4>"),
              timber_row_layout, 
              widgets.HTML("<h4>Perform least-squares fitting</h4>"),
@@ -855,16 +1158,46 @@ class InteractiveTool():
                 padding='10px',                 # Add padding around controls
                 border='solid 2px #ccc'))       # Border around the HBox
 
+        return spark_vbox
+        
+    def define_widget_layout(self):
+        """
+        Define and arrange the layout of the widgets.
+        """
+        # Main tab 
+        main_vbox = self.define_main_tab()
+
+        # Local bump tab
+        define_local_bump_box = self.define_local_bump_tab()
+        bump_matching_box = self.define_bump_matching_tab()
+        
+        # 2D view and error calculation tab
+        full_cross_section_box = self.define_2d_view_tab()
+        
+        if self.spark: 
+            spark_vbox = self.define_ls_tab()
+
             # Create an accordion to toggle visibility of controls
-            tab = Tab(children=[main_vbox, define_local_bump_box, full_cross_section_box, spark_vbox])
+            tab = Tab(children=[main_vbox, define_local_bump_box, bump_matching_box, full_cross_section_box, spark_vbox])
             tab.set_title(3, 'Timber data')
 
-        else: tab = Tab(children=[main_vbox, define_local_bump_box, full_cross_section_box])
+        else: 
+            self.collimator_data, self.BPM_data = None, None
+            tab = Tab(children=[main_vbox, define_local_bump_box, bump_matching_box, full_cross_section_box])
             
         tab.set_title(0, 'Main')
         tab.set_title(1, 'Define local bump')
-        tab.set_title(2, '2D view')
+        tab.set_title(2, 'Match local bump')
+        tab.set_title(3, '2D view')
         tab.layout.width = '100%'
+
+        self.graph_container = HBox(layout=Layout(
+            justify_content='center',
+            align_items='center',
+            width='100%',
+            padding='10px',
+            border='solid 2px #eee'))
+        
         full_column = [tab, self.graph_container]
 
         # Combine both rows, knob box, and graph container into a VBox layout
@@ -939,7 +1272,6 @@ class InteractiveTool():
         print_and_clear(f'Loading new {expected_extension[1:].upper()} data...')
         load_function(path)
         
-
     def _load_line_data(self, path):
         """
         Loads line data and re-loads associated aperture and optics data if available.
@@ -952,6 +1284,14 @@ class InteractiveTool():
         if hasattr(self, 'aperture_data'):
             n = self.aperture_data.n
             first_element = getattr(self.aperture_data, 'first_element', None)
+
+            # Remove all knobs from selected
+            for knob in self.selected_knobs[:]:
+                self.selected_knobs.remove(knob)
+                del self.values[knob]  # Remove the value of the knob
+                del self.knob_widgets[knob]  # Remove the widget
+            # Update selected knobs and display value
+            self.update_knob_box()
 
         # Load new aperture data
         self.aperture_data = ApertureData(path_b1=path)
@@ -976,7 +1316,18 @@ class InteractiveTool():
         # Update UI components
         self.enable_widgets()
         self.update_knob_dropdown()
-        self.bump_knob_dropdown.options = self.aperture_data.acbh_knobs_b1['knob']
+
+        beam = self.sort_mcbs_beam_dropdown.value
+        plane = self.sort_mcbs_plane_dropdown.value
+        region = self.sort_mcbs_regions_dropdown.value
+
+        self.mcbs_dropdown.options = self.aperture_data.sort_mcbs_by_region(beam, plane, region)
+
+        beam = self.sort_knobs_beam_dropdown.value
+        plane = self.sort_knobs_plane_dropdown.value
+        region = self.sort_knobs_regions_dropdown.value
+
+        self.bump_knob_dropdown.options = self.aperture_data.sort_acb_knobs_by_region(beam, plane, region)
 
     def _load_aperture_data(self, path):
         """
@@ -1153,6 +1504,17 @@ class InteractiveTool():
             print_and_clear(f'Setting envelope size to {selected_size}...')
             self.aperture_data.envelope(selected_size)
 
+        ir = self.main_ir_dropdown.value
+        if self.plot_range != self.aperture_data.get_ir_boundries(ir):       
+
+            self.plot_range = self.aperture_data.get_ir_boundries(ir)
+            if self.plot_range[0]>self.plot_range[1]: 
+                ip = f"ip{(int(ir[2:]) - 1) or 8}"
+                print_and_clear('Oops, to see this IR you need to cycle the graph first...')
+                self.aperture_data.cycle(ip)
+                self.cycle_input.value = ip
+                self.plot_range = self.aperture_data.get_ir_boundries(ir)  
+
         # Switch plane
         selected_plane = self.plane_dropdown.value
         self.plane = selected_plane
@@ -1166,9 +1528,11 @@ class InteractiveTool():
             # Filter the DataFrame to find the row with the matching knob name
             row = self.aperture_data.knobs[self.aperture_data.knobs['knob'] == knob_name]
 
-            # Extract the 'current value' from the DataFrame
-            df_current_value = row['current value'].values[0]
-
+            try:
+                # Extract the 'current value' from the DataFrame
+                df_current_value = row['current value'].values[0]
+            except:
+                return False
             # Compare the widget's value with the DataFrame's 'current value'
             if widget.value != df_current_value:
                 # Return True if there is a mismatch
@@ -1408,7 +1772,7 @@ class InteractiveTool():
         self.fig.update_layout(height=self.height, width=self.width, showlegend=False, plot_bgcolor='white')
 
         # Change x limits and labels
-        self.fig.update_xaxes(title_text="s [m]", tickformat=',', row=self.row, col=self.col)
+        self.fig.update_xaxes(title_text="s [m]", tickformat=',', row=self.row, col=self.col, range = self.plot_range)
 
         # Change y limits and labels
         if self.plane == 'horizontal': title = 'x [m]'
