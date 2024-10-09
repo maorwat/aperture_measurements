@@ -183,7 +183,7 @@ class InteractiveTool():
         # Create a dropdown to select a knob
         self.knob_dropdown.options = self.aperture_data.knobs['knob'].to_list()
         # If spark was given as an argument, also update the dropdown for angle fitting to BPM data
-        if self.spark: self.ls_dropdown.options = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob]
+        if self.spark: self.ls_dropdown.options = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob and 'aux' not in knob]
 
     def create_options_controls(self):
         """
@@ -1041,7 +1041,7 @@ class InteractiveTool():
                     padding='10px',                 # Add padding around controls
                     border='solid 2px #ccc'))       # Border around the HBox
         
-        return timber_row_controls
+        return timber_row_layout
 
     def create_ls_controls(self):
         """
@@ -1050,7 +1050,7 @@ class InteractiveTool():
         # Dropdown to select which angle to vary in the optimisation
         self.ls_dropdown = Dropdown(
                     options=[],
-                    description='Select knob:',
+                    description='Knob to vary:',
                     layout=Layout(width='200px'),
                     disabled=False)
                 
@@ -1064,7 +1064,7 @@ class InteractiveTool():
         # Dropdown to select IR for fitting
         self.ir_dropdown = Dropdown(
                     options=['IR1', 'IR2', 'IR3', 'IR4', 'IR5', 'IR6', 'IR7', 'IR8', 'other'],
-                    description='Select knob:',
+                    description='IR:',
                     layout=Layout(width='200px'),
                     disabled=False)
         # Attach the observe function to the dropdown
@@ -1072,9 +1072,9 @@ class InteractiveTool():
 
         # Range slider to specify s
         self.s_range_slider = widgets.FloatRangeSlider(
-                    value=[0, self.aperture_data.length],
+                    value=[0, 26658],
                     min=0.0,
-                    max=self.aperture_data.length,
+                    max=26658,
                     step=1,
                     description='Range:',
                     continuous_update=False,
@@ -1096,7 +1096,7 @@ class InteractiveTool():
 
         # Create layout for the timber row of controls
         ls_row_layout = HBox(
-                self.ls_row_controls,
+                ls_row_controls,
                 layout=Layout(
                     justify_content='space-around', # Distribute space evenly
                     align_items='center',           # Center align all items
@@ -1179,7 +1179,7 @@ class InteractiveTool():
 
             # Create an accordion to toggle visibility of controls
             tab = Tab(children=[main_vbox, define_local_bump_box, bump_matching_box, full_cross_section_box, spark_vbox])
-            tab.set_title(3, 'Timber data')
+            tab.set_title(4, 'Timber data')
 
         else: 
             self.collimator_data, self.BPM_data = None, None
@@ -1317,17 +1317,20 @@ class InteractiveTool():
         self.enable_widgets()
         self.update_knob_dropdown()
 
-        beam = self.sort_mcbs_beam_dropdown.value
-        plane = self.sort_mcbs_plane_dropdown.value
-        region = self.sort_mcbs_regions_dropdown.value
+        # This won't work if a file without deferred expressions was loaded
+        try:
+            beam = self.sort_mcbs_beam_dropdown.value
+            plane = self.sort_mcbs_plane_dropdown.value
+            region = self.sort_mcbs_regions_dropdown.value
 
-        self.mcbs_dropdown.options = self.aperture_data.sort_mcbs_by_region(beam, plane, region)
+            self.mcbs_dropdown.options = self.aperture_data.sort_mcbs_by_region(beam, plane, region)
 
-        beam = self.sort_knobs_beam_dropdown.value
-        plane = self.sort_knobs_plane_dropdown.value
-        region = self.sort_knobs_regions_dropdown.value
+            beam = self.sort_knobs_beam_dropdown.value
+            plane = self.sort_knobs_plane_dropdown.value
+            region = self.sort_knobs_regions_dropdown.value
 
-        self.bump_knob_dropdown.options = self.aperture_data.sort_acb_knobs_by_region(beam, plane, region)
+            self.bump_knob_dropdown.options = self.aperture_data.sort_acb_knobs_by_region(beam, plane, region)
+        except: pass
 
     def _load_aperture_data(self, path):
         """
