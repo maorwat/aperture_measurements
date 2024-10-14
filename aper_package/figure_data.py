@@ -433,17 +433,17 @@ def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delt
     # Merging and filtering logic for beam 1 and beam 2
     if beam == 'beam 1': 
         if hasattr(data, 'aper_b1'):
-            twiss, aper = data.tw_b1, data.aper_b1
-            merged = merge_twiss_and_aper(twiss, aper)
-        else: merged = data.tw_b1
+            twiss = data.tw_b1.reset_index(drop=True)
+            merged = merge_twiss_and_aper(data.tw_b1, data.aper_b1)
+        else: merged = twiss
         color = 'rgba(0,0,255,1)'
         color_fill = 'rgba(0,0,255,0.5)'
         color_fill_with_error = 'rgba(0,0,255,0.2)'
     elif beam == 'beam 2': 
         if hasattr(data, 'aper_b2'):
-            twiss, aper = data.tw_b2, data.aper_b2
-            merged = merge_twiss_and_aper(twiss, aper)
-        else: merged = data.tw_b2
+            twiss = data.tw_b2.reset_index(drop=True) 
+            merged = merge_twiss_and_aper(data.tw_b2, data.aper_b2)
+        else: merged = twiss
         color = 'rgba(255,0,0,1)'
         color_fill = 'rgba(255,0,0,0.5)'
         color_fill_with_error = 'rgba(255,0,0,0.2)'
@@ -453,7 +453,10 @@ def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delt
     # Filter the data for the given element
     try:
         filtered_df = merged.iloc[(merged['s'] - element_position).abs().idxmin()]
-    except:
+        if hasattr(data, 'aper_b1'): 
+            filtered_tw = twiss.iloc[(twiss['s'] - element_position).abs().idxmin()]
+        else: filtered_tw = filtered_df.copy()
+    except TypeError:
         print_and_clear('Incorrect element')
         return go.Scatter(), go.Scatter(), go.Scatter()
 
@@ -462,10 +465,10 @@ def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delt
         sigmax_after_errors, sigmay_after_errors = data.calculate_sigma_with_error(filtered_df, delta_beta, delta) 
 
         # Extract rectangle coordinates
-        x0 = filtered_df['x'] - n * sigmax_after_errors
-        x1 = filtered_df['x'] + n * sigmax_after_errors
-        y0 = filtered_df['y'] - n * sigmay_after_errors
-        y1 = filtered_df['y'] + n * sigmay_after_errors
+        x0 = filtered_tw['x'] - n * sigmax_after_errors
+        x1 = filtered_tw['x'] + n * sigmax_after_errors
+        y0 = filtered_tw['y'] - n * sigmay_after_errors
+        y1 = filtered_tw['y'] + n * sigmay_after_errors
         
         # Define the rectangle corners as a scatter trace
         envelope_trace_with_error = plot_2d_envelope(x0, x1, y0, y1, color_fill_with_error, 'Envelope including uncertainties')
@@ -482,30 +485,28 @@ def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delt
     else: aperture_trace = go.Scatter()
     
     beam_center_trace = go.Scatter(
-        x=[filtered_df['x']], 
-        y=[filtered_df['y']], 
+        x=[filtered_tw['x']], 
+        y=[filtered_tw['y']], 
         mode='markers+lines', 
         name='Beam center',
         line=dict(color=color)
     )
 
     # Extract rectangle coordinates
-    x0 = filtered_df['x'] - n * filtered_df['sigma_x']
-    x1 = filtered_df['x'] + n * filtered_df['sigma_x']
-    y0 = filtered_df['y'] - n * filtered_df['sigma_y']
-    y1 = filtered_df['y'] + n * filtered_df['sigma_y']
+    x0 = filtered_tw['x'] - n * filtered_tw['sigma_x']
+    x1 = filtered_tw['x'] + n * filtered_tw['sigma_x']
+    y0 = filtered_tw['y'] - n * filtered_tw['sigma_y']
+    y1 = filtered_tw['y'] + n * filtered_tw['sigma_y']
     
     # Define the rectangle corners as a scatter trace
     envelope_trace = plot_2d_envelope(x0, x1, y0, y1, color_fill, 'Envelope')
 
     # Check if at least one defined and if aperture loaded
     try:
-
-        aperx_error, apery_error = data.calculate_aper_error(filtered_df, delta_co, rtol, xtol, ytol)
-
+        aperx_error, apery_error = data.calculate_aper_error(filtered_df, rtol, xtol, ytol, delta_co)
         aperture_trace_with_error = plot_2d_aperture(aper_1-aperx_error, aper_2-apery_error, aper_3-aperx_error, aper_4-apery_error, 'Aperture including tolerances')
-    
-    except: aperture_trace_with_error = go.Scatter()
+    except: 
+        aperture_trace_with_error = go.Scatter()
 
     return [beam_center_trace, envelope_trace, envelope_trace_with_error, aperture_trace, aperture_trace_with_error]
 

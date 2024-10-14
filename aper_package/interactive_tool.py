@@ -775,13 +775,13 @@ class InteractiveTool():
         
         # Aperture tolerances, only visible if 'Customise aperture tolerances' selected
         self.rtol_input = FloatText(
-            description="rtol", 
+            description="rtol [m]", 
             layout=widgets.Layout(width='200px')) 
         self.xtol_input = FloatText(
-            description="xtol", 
+            description="xtol [m]", 
             layout=widgets.Layout(width='200px')) 
         self.ytol_input = FloatText(
-            description="ytol", 
+            description="ytol [m]", 
             layout=widgets.Layout(width='200px')) 
         
         error_controls = [self.delta_co_input, self.delta_beta_input, self.delta_input]
@@ -939,15 +939,15 @@ class InteractiveTool():
         n = self.aperture_data.n
         element = self.element_input.value
 
+        if self.aper_tolerances_dropdown.value == 'Customise aperture tolerances':
+            rtol, xtol, ytol = self.rtol_input.value, self.xtol_input.value, self.ytol_input.value
+        else: rtol, xtol, ytol = None, None, None
+
         if self.toggle_switch.value:
             delta_beta = self.delta_beta_input.value
             delta = self.delta_input.value
             delta_co = self.delta_co_input.value
-        else: delta_beta, delta, delta_co = 0, 0, 0
-
-        if self.aper_tolerances_dropdown.value == 'Customise aperture tolerances':
-            rtol, xtol, ytol = self.rtol_input.value, self.xtol_input.value, self.ytol_input.value
-        else: rtol, xtol, ytol = None, None, None
+        else: delta_beta, delta, delta_co, rtol, xtol, ytol = 0, 0, 0, 0, 0, 0
 
         print_and_clear('Generating the cross-section...')
         # Generate and store as attributes the cross-sctions
