@@ -5,6 +5,9 @@ import copy
 from datetime import datetime, date
 from typing import Optional, List, Tuple, Any
 
+import warnings
+warnings.simplefilter(action='ignore', category=DeprecationWarning)
+
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from ipywidgets import widgets, Tab, VBox, HBox, Button, Layout, FloatText, DatePicker, Text, Dropdown, Label
@@ -677,8 +680,8 @@ class InteractiveTool():
         beam = self.sort_mcbs_beam_dropdown.value
         plane = self.sort_mcbs_plane_dropdown.value
 
-        self.aperture_data.match_local_bump(element, self.selected_mcbs_list, size, beam, plane)
-        self.update_graph()
+        update = self.aperture_data.match_local_bump(element, self.selected_mcbs_list, size, beam, plane)
+        if update: self.update_graph()
 
     def add_mcbs_button_clicked(self, b):
 

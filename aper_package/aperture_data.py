@@ -13,6 +13,7 @@ from aper_package.utils import *
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.simplefilter(action='ignore', category=DeprecationWarning)
 
 class ApertureData:
     
@@ -499,8 +500,8 @@ class ApertureData:
         if not path_b2: path_b2 = str(path_b1).replace('B1', 'B4')
 
         # Drop uneeded columns
-        df1 = tfs.read(path_b1)[['S', 'NAME', 'APER_1', 'APER_2', 'APER_3', 'APER_4']]
-        df2 = tfs.read(path_b2)[['S', 'NAME', 'APER_1', 'APER_2', 'APER_3', 'APER_4']]
+        df1 = tfs.read(path_b1)[['S', 'NAME', 'APER_1', 'APER_2', 'APER_3', 'APER_4', 'MECH_SEP']]
+        df2 = tfs.read(path_b2)[['S', 'NAME', 'APER_1', 'APER_2', 'APER_3', 'APER_4', 'MECH_SEP']]
         # Get rid of undefined values
         df1 = df1[(df1['APER_1'] < 0.2) & (df1['APER_1'] != 0) & (df1['APER_2'] < 0.2) & (df1['APER_2'] != 0)]
         df2 = df2[(df2['APER_1'] < 0.2) & (df2['APER_1'] != 0) & (df2['APER_2'] < 0.2) & (df2['APER_2'] != 0)]
@@ -777,10 +778,16 @@ class ApertureData:
             next_index = max_s_index + 1
 
             # Retrieve the names at these indices
-            start_element = tw.at[previous_index, 'name']
-            end_element = tw.at[next_index, 'name']
+            if beam == 'beam 1':
+                start_element = tw.at[previous_index, 'name']
+                end_element = tw.at[next_index, 'name']
+            elif beam == 'beam 2':
+                start_element = tw.at[next_index, 'name']
+                end_element = tw.at[previous_index, 'name']
 
-        except: print('Something is wrong with the correctors')
+        except: 
+            print_and_clear('Something is wrong with the correctors')
+            return False
                 
         print_and_clear(f'Applying a {mcb_count}C-bump...')
         tw0 = line.twiss()
@@ -789,15 +796,15 @@ class ApertureData:
             target1 = xt.TargetSet(['y','py'], value=tw0, at=xt.END)
             target2 = xt.Target('y', size/1000, at=element)
             # Get knobs that control relevant mcb elements
-            vars_list = [str(line.element_refs[element].ksl[0]._expr) for element in relevant_mcbs]
+            vars_list = [str(line.element_refs[i].ksl[0]._expr) for i in relevant_mcbs]
             varylist = [re.search(r"vars\['(.*?)'\]", expr).group(1) for expr in vars_list]
         elif plane == 'horizontal':
             target1 = xt.TargetSet(['x','px'], value=tw0, at=xt.END)
             target2 = xt.Target('x', size/1000, at=element)
             # Get knobs that control relevant mcb elements
-            vars_list = [str(line.element_refs[element].knl[0]._expr) for element in relevant_mcbs]
+            vars_list = [str(line.element_refs[i].knl[0]._expr) for i in relevant_mcbs]
             varylist = [re.search(r"vars\['(.*?)'\]", expr).group(1) for expr in vars_list]
-                
+
         targets = [target1, target2]
 
         try:
@@ -815,8 +822,12 @@ class ApertureData:
 
             for knob, new_value in knob_values.items():
                 df.loc[df['knob'] == knob, 'current value'] = new_value
+            
+            return True
 
-        except Exception as e: print(e)
+        except Exception as e: 
+            print(e)
+            return False
         
     def get_ir_boundries(self, ir):
         """
