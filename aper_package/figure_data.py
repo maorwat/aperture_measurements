@@ -422,10 +422,6 @@ def generate_2d_plot(element, beam, data, n, rtol=None, xtol=None, ytol=None, de
     fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', zeroline=True, zerolinewidth=1, zerolinecolor='lightgrey')
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', zeroline=True, zerolinewidth=1, zerolinecolor='lightgrey')
 
-    # Set axis limits to -0.05 to 0.05 for both x and y axes
-    #fig.update_xaxes(range=[-0.05, 0.05])
-    #fig.update_yaxes(range=[-0.05, 0.05])
-
     return go.FigureWidget(fig)
 
 def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delta_beta=0, delta=0, delta_co=0):
@@ -435,7 +431,7 @@ def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delt
         if hasattr(data, 'aper_b1'):
             twiss = data.tw_b1.reset_index(drop=True)
             merged = merge_twiss_and_aper(data.tw_b1, data.aper_b1)
-        else: merged = twiss
+        else: merged = data.tw_b1.reset_index(drop=True)
         color = 'rgba(0,0,255,1)'
         color_fill = 'rgba(0,0,255,0.5)'
         color_fill_with_error = 'rgba(0,0,255,0.2)'
@@ -443,7 +439,7 @@ def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delt
         if hasattr(data, 'aper_b2'):
             twiss = data.tw_b2.reset_index(drop=True) 
             merged = merge_twiss_and_aper(data.tw_b2, data.aper_b2)
-        else: merged = twiss
+        else: merged = data.tw_b2.reset_index(drop=True) 
         color = 'rgba(255,0,0,1)'
         color_fill = 'rgba(255,0,0,0.5)'
         color_fill_with_error = 'rgba(255,0,0,0.2)'
@@ -471,9 +467,9 @@ def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delt
         y1 = filtered_tw['y'] + n * sigmay_after_errors
         
         # Define the rectangle corners as a scatter trace
-        envelope_trace_with_error = plot_2d_envelope(x0, x1, y0, y1, color_fill_with_error, 'Envelope including uncertainties')
+        envelope_trace_with_error, outline_trace_after_errors = plot_2d_envelope(x0, x1, y0, y1, color_fill_with_error, 'Envelope including uncertainties')
     
-    else: envelope_trace_with_error = go.Scatter()
+    else: envelope_trace_with_error, outline_trace_after_errors = go.Scatter(), go.Scatter()
 
     if hasattr(data, 'aper_b1'):
         # Extract rectangle dimensions from APER_1 and APER_2
@@ -499,7 +495,7 @@ def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delt
     y1 = filtered_tw['y'] + n * filtered_tw['sigma_y']
     
     # Define the rectangle corners as a scatter trace
-    envelope_trace = plot_2d_envelope(x0, x1, y0, y1, color_fill, 'Envelope')
+    envelope_trace, outline_trace = plot_2d_envelope(x0, x1, y0, y1, color_fill, 'Envelope')
 
     # Check if at least one defined and if aperture loaded
     try:
@@ -508,21 +504,47 @@ def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delt
     except: 
         aperture_trace_with_error = go.Scatter()
 
-    return [beam_center_trace, envelope_trace, envelope_trace_with_error, aperture_trace, aperture_trace_with_error]
+    return [beam_center_trace, envelope_trace, outline_trace, envelope_trace_with_error, outline_trace_after_errors, aperture_trace, aperture_trace_with_error]
 
 def plot_2d_envelope(x0, x1, y0, y1, color, name): 
+    # Create more points along each side of the envelope to enhance hover functionality
+    x_side1 = np.linspace(x0, x1, 100)
+    y_side1 = np.full_like(x_side1, y0)
+    
+    y_side2 = np.linspace(y0, y1, 100)
+    x_side2 = np.full_like(y_side2, x1)
+    
+    x_side3 = np.linspace(x1, x0, 100)
+    y_side3 = np.full_like(x_side3, y1)
+    
+    y_side4 = np.linspace(y1, y0, 100)
+    x_side4 = np.full_like(y_side4, x0)
+
+    # Combine all sides to form the envelope
+    x_envelope = np.concatenate([x_side1, x_side2, x_side3, x_side4])
+    y_envelope = np.concatenate([y_side1, y_side2, y_side3, y_side4])
 
     envelope_trace = go.Scatter(
-            x=[x0, x1, x1, x0, x0],  # Close the rectangle by repeating x0 at the end
-            y=[y0, y0, y1, y1, y0],  # Close the rectangle by repeating y0 at the end
-            mode='lines',
-            name = name,
-            line=dict(color=color, width=2),
-            fill='toself',  # To fill the shape (optional)
-            fillcolor=color  # Example fill color with some transparency
-        )   
+        x=[x0, x1, x1, x0, x0],  # Close the rectangle by repeating x0 at the end
+        y=[y0, y0, y1, y1, y0],  # Close the rectangle by repeating y0 at the end
+        mode='lines',
+        name = name,
+        line=dict(color=color, width=2),
+        fill='toself',  # To fill the shape (optional)
+        fillcolor=color  # Example fill color with some transparency
+    )   
 
-    return envelope_trace
+    # Create a transparent outline for the envelope
+    outline_trace = go.Scatter(
+        x=x_envelope,
+        y=y_envelope,
+        mode='lines',
+        name=name,
+        line=dict(color='rgba(0, 0, 0, 0.1)', width=2)
+    )
+
+    return envelope_trace, outline_trace
+
 
 def plot_2d_aperture(aper_1, aper_2, aper_3, aper_4, name):
 

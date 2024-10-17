@@ -25,7 +25,7 @@ class InteractiveTool():
                 spark: Optional[Any] = None,
                 initial_path: Optional[str] = '/eos/project-c/collimation-team/machine_configurations/', 
                 angle_range = (-800, 800),
-                number_of_knobs_per_line = 5):
+                number_of_knobs_per_line = 4):
         
         """
         Create and display an interactive plot with widgets for controlling and visualizing data.
@@ -131,12 +131,6 @@ class InteractiveTool():
             description="Add", 
             style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'), 
             tooltip='Add the selected knob to the list of adjustable knobs.')
-        
-        # Button to remove selection
-        self.remove_button = Button(
-            description="Remove", 
-            style=widgets.ButtonStyle(button_color='rgb(249, 123, 114)'), 
-            tooltip='Remove the selected knob from the list of adjustable knobs.')
 
         # Button to reset knobs    
         self.reset_button = Button(
@@ -146,11 +140,10 @@ class InteractiveTool():
 
         # Assign function to buttons
         self.add_button.on_click(self.on_add_button_clicked)
-        self.remove_button.on_click(self.on_remove_button_clicked)
         self.reset_button.on_click(self.on_reset_button_clicked)
 
         # Add widgets to the full list
-        knob_controls = [self.knob_dropdown, self.add_button, self.remove_button, self.reset_button]
+        knob_controls = [self.knob_dropdown, self.add_button, self.reset_button]
         self.widgets += knob_controls
 
         # Put all together in a hbox
@@ -165,18 +158,65 @@ class InteractiveTool():
         
         return first_row_layout
 
+    def on_add_button_clicked(self, b):
+        """
+        Handle the event when the Add button is clicked. 
+        Add a new knob to the selected list and create a widget for it.
+        """
+        # Knob selected in the dropdown menu
+        knob = self.knob_dropdown.value
+        # If the knob is not already in the selected list, add it
+        if knob and knob not in self.selected_knobs:
+            self.selected_knobs.append(knob)
+            self.values[knob] = self.aperture_data.knobs[self.aperture_data.knobs['knob']==knob]['current value']  # Initialize knob for new value
+
+            # Create a new FloatText widget for the selected knob
+            knob_widget = FloatText(
+                value=self.values[knob],
+                description=f'{knob}',
+                disabled=False
+            )
+
+            # Create a remove button for this knob
+            remove_button = Button(
+                description="Remove", 
+                style={'button_color': 'rgb(249, 123, 114)'}, 
+                tooltip='Remove this knob from the list.'
+            )
+            remove_button.on_click(lambda b, k=knob: self.on_remove_button_clicked(k))
+
+            # Add the widget to the knob widgets list
+            self.knob_widgets[knob] = (knob_widget, remove_button)
+
+            # Update selected knobs and display value
+            self.update_knob_box()
+
+    def on_remove_button_clicked(self, knob):
+        """
+        Handle the event when the Remove button is clicked. 
+        Remove the selected knob from the list and delete its widget.
+        """
+        if knob in self.selected_knobs:
+            self.selected_knobs.remove(knob)
+            del self.values[knob]
+            if knob in self.knob_widgets:
+                del self.knob_widgets[knob]
+
+            self.update_knob_box()
+
     def update_knob_box(self):
         """
         Updates the layout of the knob_box with current knob widgets.
         """
-        # Group the widgets into sets of self.number_og_knobs_per_line
         rows = []
         for i in range(0, len(self.selected_knobs), self.number_of_knobs_per_line):
-            row = HBox([self.knob_widgets[knob] for knob in self.selected_knobs[i:i+self.number_of_knobs_per_line]],
-                       layout=Layout(align_items='flex-start'))
+            row_widgets = []
+            for knob in self.selected_knobs[i:i + self.number_of_knobs_per_line]:
+                knob_widget, remove_button = self.knob_widgets[knob]
+                row_widgets.append(HBox([knob_widget, remove_button], layout=Layout(align_items='center')))
+            row = HBox(row_widgets, layout=Layout(align_items='flex-start'))
             rows.append(row)
 
-        # Update the knob_box with the new rows
         self.knob_box.children = rows
 
     def update_knob_dropdown(self):
@@ -1481,7 +1521,7 @@ class InteractiveTool():
         if self.check_mismatches():
             # Update knobs dictionary based on current values in the knob widgets
             try:
-                for knob, widget in self.knob_widgets.items():
+                for knob, (widget, remove_button) in self.knob_widgets.items():
                     self.aperture_data.change_knob(knob, widget.value)
 
                 # Re-twiss
@@ -1529,63 +1569,25 @@ class InteractiveTool():
         self.update_graph()
 
     def check_mismatches(self):
-        # Loop through each widget in the dictionary
-        for knob_name, widget in self.knob_widgets.items():
+        # Loop through each widget (and its corresponding remove button) in the dictionary
+        for knob_name, (widget, remove_button) in self.knob_widgets.items():
             # Filter the DataFrame to find the row with the matching knob name
             row = self.aperture_data.knobs[self.aperture_data.knobs['knob'] == knob_name]
 
             try:
                 # Extract the 'current value' from the DataFrame
                 df_current_value = row['current value'].values[0]
-            except:
+            except IndexError:
+                # If there's an issue extracting the value, return False
                 return False
+            
             # Compare the widget's value with the DataFrame's 'current value'
             if widget.value != df_current_value:
                 # Return True if there is a mismatch
                 return True
+        
         # Return False if no mismatches were found
         return False
-
-    def on_add_button_clicked(self, b):
-        """
-        Handle the event when the Add button is clicked. 
-        Add a new knob to the selected list and create a widget for it.
-        """
-        # Knob selected in the dropdown menu
-        knob = self.knob_dropdown.value
-        # If the knob is not already in the selected list, add it
-        if knob and knob not in self.selected_knobs:
-            self.selected_knobs.append(knob)
-            self.values[knob] = self.aperture_data.knobs[self.aperture_data.knobs['knob']==knob]['current value']  # Initialize knob for new value
-
-            # Create a new FloatText widget for the selected knob
-            knob_widget = FloatText(
-                value=self.values[knob],
-                description=f'{knob}',
-                disabled=False
-            )
-            # Add the widget to the knob widgets list
-            self.knob_widgets[knob] = knob_widget
-
-            # Update selected knobs and display value
-            self.update_knob_box()
-
-    def on_remove_button_clicked(self, b):
-        """
-        Handle the event when the Remove button is clicked. 
-        Remove the selected knob from the list and delete its widget.
-        """
-        # Knob selected in the dropdown menu
-        knob = self.knob_dropdown.value
-        # If the knob is in the selected list, remove it
-        if knob in self.selected_knobs:
-            self.selected_knobs.remove(knob)
-            del self.values[knob]  # Remove the value of the knob
-            if knob in self.knob_widgets:
-                del self.knob_widgets[knob]  # Remove the widget
-
-            # Update selected knobs and display value
-            self.update_knob_box()
 
     def disable_buttons(self):
         """
