@@ -747,11 +747,17 @@ class ApertureData:
                        relevant_mcbs: list,
                        size: float, 
                        beam: str,
-                       plane: str):
+                       plane: str,
+                       tw0 = None):
 
         """
         Adds a 3C or 4C local bump to line using optimisation line.match
         """
+        # If bump size was given as a numpy array, get the first value - for fitting
+        if isinstance(size, np.ndarray): size = size[0]
+
+        element = element.lower()
+
         if beam == 'beam 1': 
             line, tw = self.line_b1, self.tw_b1.copy().reset_index()
             if plane == 'horizontal': df = self.acbh_knobs_b1
@@ -790,7 +796,8 @@ class ApertureData:
             return False
                 
         print_and_clear(f'Applying a {mcb_count}C-bump...')
-        tw0 = line.twiss()
+        if tw0 is None:
+            tw0 = line.twiss()
 
         if plane == 'vertical':
             target1 = xt.TargetSet(['y','py'], value=tw0, at=xt.END)

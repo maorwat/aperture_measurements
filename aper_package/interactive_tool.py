@@ -226,7 +226,7 @@ class InteractiveTool():
         # Create a dropdown to select a knob
         self.knob_dropdown.options = self.aperture_data.knobs['knob'].to_list()
         # If spark was given as an argument, also update the dropdown for angle fitting to BPM data
-        if self.spark: self.ls_dropdown.options = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob and 'aux' not in knob]
+        if self.spark: self.ls_dropdown.options = [knob for knob in self.aperture_data.knobs['knob'].to_list() if 'on_x' in knob and 'aux' not in knob or 'on_sep' in knob]
 
     def create_options_controls(self):
         """
@@ -451,7 +451,68 @@ class InteractiveTool():
                 padding='10px', 
                 border='solid 2px #ccc'))
         
-        return first_row_box, second_row_box, third_row_box
+        if self.spark:
+
+            # Range slider to specify s
+            self.s_range_yasp_bump_slider = widgets.FloatRangeSlider(
+                        value=[0, 26658],
+                        min=0.0,
+                        max=26658,
+                        step=1,
+                        description='s range [m]:',
+                        continuous_update=False,
+                        layout=Layout(width='400px'),
+                        readout_format='d')
+                
+            self.fit_yasp_bump_button = Button(
+                    description="Fit to data", 
+                    style=widgets.ButtonStyle(button_color='pink'), 
+                    tooltip='Perform least squares fitting.')
+
+            self.fit_yasp_bump_button.on_click(self.fit_yasp_bump_clicked)  
+
+            # Output with best fit angle and its uncertainty
+            self.yasp_bump_result_output = widgets.Output()
+
+            # Add all widgets to the list
+            fourth_row_controls = [self.s_range_yasp_bump_slider, self.fit_yasp_bump_button, self.yasp_bump_result_output]
+            self.widgets += fourth_row_controls
+            
+            # Controls for the final bump section
+            fourth_row_box = widgets.HBox(
+                fourth_row_controls, 
+                layout=widgets.Layout(
+                    justify_content='space-around', 
+                    align_items='center', 
+                    width='100%', 
+                    padding='10px', 
+                    border='solid 2px #ccc'))
+        
+        else: fourth_row_box = widgets.Output()
+        
+        return first_row_box, second_row_box, third_row_box, fourth_row_box
+    
+    def fit_yasp_bump_clicked(self, b):
+        
+        s_range = self.s_range_yasp_bump_slider.value
+
+        try:
+            self.best_fit_yasp_size, self.best_fit_size_yasp_uncertainty = self.BPM_data.yasp_bump_least_squares_fit(self.aperture_data, 
+                                    s_range, 
+                                    self.final_bump_container, 
+                                    self.bump_dict)
+
+            with self.yasp_bump_result_output:
+                self.yasp_bump_result_output.clear_output()  # Clear previous output
+                for i, (param, uncertainty) in enumerate(zip(self.best_fit_yasp_size, self.best_fit_size_yasp_uncertainty)):
+                    bump_name = self.final_bump_container.children[i].children[0].value  # Get the bump name
+                    print(f"{bump_name}: Best Fit Value = {round(param, 2)}, Uncertainty = {round(uncertainty, 2)}")
+            self.update_graph()
+        
+        except:
+            with self.yasp_bump_result_output:
+                self.yasp_bump_result_output.clear_output()  # Clear previous output
+                print(f'Fitting failed')
 
     def on_remove_bumps_button_clicked(self, b):
         """
@@ -588,18 +649,34 @@ class InteractiveTool():
         """
         Groups all the widgets for the local bump into one vbox
         """
-        first_row_box, second_row_box, third_row_box = self.create_local_bump_controls()
+        first_row_box, second_row_box, third_row_box, fourth_row_box = self.create_local_bump_controls()
 
-        # Display the layout
-        local_bump_box = widgets.VBox([
+        if self.spark:
+            local_bump_controls = [
             widgets.HTML("<h4>Define and configure bumps</h4>"),
             first_row_box,
             second_row_box,
             self.main_bump_box,
             widgets.HTML("<h4>Select bumps for final calculation</h4>"),
             third_row_box,
-            self.final_bump_container
-        ], layout=widgets.Layout(
+            self.final_bump_container,
+            widgets.HTML("<h4>Perform least-squares fitting</h4>"),
+            fourth_row_box]
+
+        else:
+            local_bump_controls = [
+            widgets.HTML("<h4>Define and configure bumps</h4>"),
+            first_row_box,
+            second_row_box,
+            self.main_bump_box,
+            widgets.HTML("<h4>Select bumps for final calculation</h4>"),
+            third_row_box,
+            self.final_bump_container]
+
+        # Display the layout
+        local_bump_box = widgets.VBox(
+            local_bump_controls, 
+            layout=widgets.Layout(
             border='solid 2px #ccc', 
             padding='10px', 
             width='100%'))
@@ -700,7 +777,94 @@ class InteractiveTool():
                 padding='10px', 
                 border='solid 2px #ccc'))
         
-        return first_row_box, second_row_box          
+        if self.spark:
+
+            # Input to type the size of the bump
+            self.initial_guess_bump_size_input = FloatText(
+                description=r"Initial guess [mm]:",    
+                style={'description_width': 'initial'},
+                layout=widgets.Layout(width='200px')) 
+            
+            # Range slider to specify s
+            self.s_range_local_bump_slider = widgets.FloatRangeSlider(
+                        value=[0, 26658],
+                        min=0.0,
+                        max=26658,
+                        step=1,
+                        description='s range [m]:',
+                        continuous_update=False,
+                        layout=Layout(width='400px'),
+                        readout_format='d')
+            
+            # Range slider to specify s
+            self.local_bump_size_range_slider = widgets.FloatRangeSlider(
+                        value=[-20, 20],
+                        min=-20.0,
+                        max=20.0,
+                        step=1,
+                        description='Bump size range [mm]:',
+                        continuous_update=False,
+                        layout=Layout(width='400px'),
+                        readout_format='d')
+                
+            self.fit_local_bump_button = Button(
+                    description="Fit to data", 
+                    style=widgets.ButtonStyle(button_color='pink'), 
+                    tooltip='Perform least squares fitting.')
+
+            self.fit_local_bump_button.on_click(self.fit_local_bump_clicked)  
+
+            # Output with best fit angle and its uncertainty
+            self.local_bump_result_output = widgets.Output()
+
+            third_row_controls = [self.initial_guess_bump_size_input, self.s_range_local_bump_slider,
+                                  self.local_bump_size_range_slider, self.fit_local_bump_button, self.local_bump_result_output]
+            self.widgets += third_row_controls
+
+            third_row_box = widgets.HBox(
+            third_row_controls, 
+            layout=widgets.Layout(
+                justify_content='space-around', 
+                align_items='center', 
+                width='100%', 
+                padding='10px', 
+                border='solid 2px #ccc'))
+            
+        else: third_row_box = widgets.Output() # Just a place holder is spark was not given
+        
+        return first_row_box, second_row_box, third_row_box    
+
+    def fit_local_bump_clicked(self, b):
+
+        init_size = self.initial_guess_bump_size_input.value
+        s_range = self.s_range_local_bump_slider.value
+        element = self.local_bump_element_input.value
+        beam = self.sort_mcbs_beam_dropdown.value
+        plane = self.sort_mcbs_plane_dropdown.value
+        relevant_mcbs = self.selected_mcbs_list
+        size_range = self.local_bump_size_range_slider.value
+
+        try:
+            self.best_fit_size, self.best_fit_size_uncertainty = self.BPM_data.local_bump_least_squares_fit(
+                                                                                                    element,
+                                                                                                    self.aperture_data,
+                                                                                                    init_size,
+                                                                                                    relevant_mcbs,
+                                                                                                    beam,
+                                                                                                    plane,
+                                                                                                    size_range, 
+                                                                                                    s_range)
+
+            with self.local_bump_result_output:
+                self.local_bump_result_output.clear_output()  # Clear previous output
+                print(f'Best fit angle: {self.best_fit_size} Uncertainty: {self.best_fit_size_uncertainty}')
+
+            self.update_graph()
+        
+        except:
+            with self.local_bump_result_output:
+                self.local_bump_result_output.clear_output()  # Clear previous output
+                print(f'Fitting failed')
 
     def update_bump_mcbs_dropdown(self, change):
         """
@@ -761,14 +925,24 @@ class InteractiveTool():
         """
         Groups all the widgets for the local bump into one vbox
         """
-        first_row_box, second_row_box = self.create_bump_matching_controls()
+        first_row_box, second_row_box, third_row_box = self.create_bump_matching_controls()
 
-        # Display the layout
-        bump_matching_box = widgets.VBox([
+        if self.spark: bump_matching_controls = [
             widgets.HTML("<h4>Add a local bump using line.match</h4>"),
             first_row_box, second_row_box, 
             widgets.HTML("<h4>Correctors to be varied for matching</h4>"),
-            self.selected_mcbs_hbox],
+            self.selected_mcbs_hbox,
+            widgets.HTML("<h4>Perform least-squares fitting</h4>"),
+            third_row_box]
+        else: bump_matching_controls = [
+            widgets.HTML("<h4>Add a local bump using line.match</h4>"),
+            first_row_box, second_row_box, 
+            widgets.HTML("<h4>Correctors to be varied for matching</h4>"),
+            self.selected_mcbs_hbox]
+
+        # Display the layout
+        bump_matching_box = widgets.VBox(
+            bump_matching_controls,
             layout=widgets.Layout(
                 border='solid 2px #ccc', 
                 padding='10px', 

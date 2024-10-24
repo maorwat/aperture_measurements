@@ -80,6 +80,29 @@ class BPMData:
         self.b1 = pd.merge(self.data, twiss.tw_b1[['name', 's']], on='name')
         self.b2 = pd.merge(self.data, twiss.tw_b2[['name', 's']], on='name')
 
+    def _simulate(self, angle, aper_data, knob, s_range):
+        
+        # Vary the crossing angle
+        aper_data.change_knob(knob, angle)
+        aper_data.twiss()
+        
+        # Merge new simulated data with the measured data
+        merged_b1 = self._merge_twiss_and_bpm(aper_data.tw_b1, s_range)
+        merged_b2 = self._merge_twiss_and_bpm(aper_data.tw_b2, s_range)
+        
+        # Perform the fitting on both beams simultanously
+        return pd.concat([merged_b1, merged_b2], ignore_index=True)
+
+    def _objective(self, angle, aper_data, knob, s_range, plane):
+        
+        df = self._simulate(angle, aper_data, knob, s_range)
+
+        # Calculate the residuals for the plane of interest
+        if plane == 'horizontal': residuals = df['x'] - df['x_simulated']
+        elif plane == 'vertical': residuals =  df['y'] - df['y_simulated']
+            
+        return residuals
+
     def least_squares_fit(self,
                         aper_data: object,
                         init_angle: float,
@@ -109,7 +132,128 @@ class BPMData:
         param_uncertainty = np.sqrt(np.diag(covariance))
 
         return round(params[0], 2), round(param_uncertainty[0], 2)
+    
+    def _local_bump_simulate(self, size, element, aper_data, relevant_mcbs, s_range, beam, plane, tw0):
+        
+        # Vary the crossing angle
+        aper_data.match_local_bump(element, relevant_mcbs, size, beam, plane, tw0)
+        
+        # Merge new simulated data with the measured data
+        merged_b1 = self._merge_twiss_and_bpm(aper_data.tw_b1, s_range)
+        merged_b2 = self._merge_twiss_and_bpm(aper_data.tw_b2, s_range)
+        
+        # Perform the fitting on both beams simultanously
+        return pd.concat([merged_b1, merged_b2], ignore_index=True)
 
+    def _local_bump_objective(self, size, element, aper_data, relevant_mcbs, s_range, beam, plane, tw0):
+        
+        df = self._local_bump_simulate(size, element, aper_data, relevant_mcbs, s_range, beam, plane, tw0)
+
+        # Calculate the residuals for the plane of interest
+        if plane == 'horizontal': residuals = df['x'] - df['x_simulated']
+        elif plane == 'vertical': residuals =  df['y'] - df['y_simulated']
+
+        return residuals
+    
+    def local_bump_least_squares_fit(self,
+                        element: str,
+                        aper_data: object,
+                        init_size: float,
+                        relevant_mcbs: list,
+                        beam: str,
+                        plane: str,
+                        size_range: Optional[Tuple[float, float]] = (-15, 15), 
+                        s_range: Optional[Tuple[float, float]] = None):
+        """
+        Data needs to be loaded using self.load befor performing the fit.
+        """
+        if beam == 'beam 1': line = aper_data.line_b1
+        elif beam == 'beam 2': line = aper_data.line_b2
+
+        tw0 = line.twiss()
+        result = least_squares(self._local_bump_objective, x0=[init_size], bounds=size_range, args=(element, aper_data, relevant_mcbs, s_range, beam, plane, tw0), diff_step=1e-3)
+
+        # Extract the optimized parameter, Jacobian, and residuals
+        params = result.x
+        jacobian = result.jac
+        residuals = self._local_bump_objective(params, element, aper_data, relevant_mcbs, s_range, beam, plane, tw0)
+        
+        # Compute statistics
+        n = len(residuals)
+        p = len(params)
+        sigma_squared = np.sum(residuals**2) / (n - p)
+        covariance = np.linalg.inv(jacobian.T @ jacobian) * sigma_squared
+        param_uncertainty = np.sqrt(np.diag(covariance))
+
+        return round(params[0], 2), round(param_uncertainty[0], 2)
+    
+    def _yasp_bump_simulate(self, scale_factors, aper_data, s_range, final_bump_container, bump_dict):
+        
+        # Vary the scaling
+        for n,bump_hbox in enumerate(final_bump_container.children):
+            bump_name = bump_hbox.children[0].value
+
+            float_inputs = bump_dict[bump_name]['float_inputs']
+            selected_beam = bump_dict[bump_name]['vbox'].children[0].value  # Get the selected beam
+
+            # Iterate over all knobs in the bump definition and scale them accordingly    
+            for i in float_inputs:
+                aper_data.change_acb_knob(i.description, i.value*scale_factors[n]*1e-6, selected_beam)
+        
+        # Twiss and update the graph
+        aper_data.twiss()
+        
+        # Merge new simulated data with the measured data
+        merged_b1 = self._merge_twiss_and_bpm(aper_data.tw_b1, s_range)
+        merged_b2 = self._merge_twiss_and_bpm(aper_data.tw_b2, s_range)
+        
+        # Perform the fitting on both beams simultanously
+        return pd.concat([merged_b1, merged_b2], ignore_index=True)
+
+    def _yasp_bump_objective(self, scale_factors, aper_data, s_range, final_bump_container, bump_dict):
+        
+        df = self._yasp_bump_simulate(scale_factors, aper_data, s_range, final_bump_container, bump_dict)
+
+        # Calculate the residuals for the plane of interest
+        residuals_x = df['x'] - df['x_simulated']
+        residuals_y =  df['y'] - df['y_simulated']
+
+        residuals = np.concatenate((residuals_x, residuals_y))
+        
+        return residuals
+    
+    def yasp_bump_least_squares_fit(self,
+                                    aper_data, 
+                                    s_range, 
+                                    final_bump_container, 
+                                    bump_dict):
+        """
+        Data needs to be loaded using self.load befor performing the fit.
+        """
+        initial_guess = []
+        for bump_hbox in final_bump_container.children:
+            bump_name = bump_hbox.children[0].value
+            bump_float_value = bump_hbox.children[1].value
+
+            initial_guess.append(bump_float_value)
+
+        result = least_squares(self._yasp_bump_objective, x0=initial_guess, args=(aper_data, s_range, final_bump_container, bump_dict), diff_step=1e-3)
+
+        # Extract the optimized parameter, Jacobian, and residuals
+        params = result.x
+        jacobian = result.jac
+        residuals = self._yasp_bump_objective(params, aper_data, s_range, final_bump_container, bump_dict)
+
+        # Compute statistics
+        n = len(residuals)
+        p = len(params)
+        sigma_squared = np.sum(residuals**2) / (n - p)
+        covariance = np.linalg.inv(jacobian.T @ jacobian) * sigma_squared
+        param_uncertainty = np.sqrt(np.diag(covariance))
+
+        # Return all parameters and uncertainties
+        return params, param_uncertainty
+    
     def _merge_twiss_and_bpm(self, twiss_data, s_range):
     
         # Rename the columns to differentiate between simulated and measured data
@@ -122,29 +266,6 @@ class BPMData:
         if s_range: merged = merged[(merged['s'] >= s_range[0]) & (merged['s'] <= s_range[1])]
         
         return merged
-
-    def _simulate(self, angle, aper_data, knob, s_range):
-        
-        # Vary the crossing angle
-        aper_data.change_knob(knob, angle)
-        aper_data.twiss()
-        
-        # Merge new simulated data with the measured data
-        merged_b1 = self._merge_twiss_and_bpm(aper_data.tw_b1, s_range)
-        merged_b2 = self._merge_twiss_and_bpm(aper_data.tw_b2, s_range)
-        
-        # Perform the fitting on both beams simultanously
-        return pd.concat([merged_b1, merged_b2], ignore_index=True)
-
-    def _objective(self, angle, aper_data, knob, s_range, plane):
-        
-        df = self._simulate(angle, aper_data, knob, s_range)
-
-        # Calculate the residuals for the plane of interest
-        if plane == 'horizontal': residuals = df['x'] - df['x_simulated']
-        elif plane == 'vertical': residuals =  df['y'] - df['y_simulated']
-            
-        return residuals
 
 class CollimatorsData:
 
