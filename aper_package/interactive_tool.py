@@ -1427,9 +1427,8 @@ class InteractiveTool():
         self.full_layout = VBox(
             full_column,
             layout=Layout(
-                justify_content='center',       # Center align the VBox content horizontally
-                align_items='center',           # Center align all items vertically
-                width='100%',                    # Limit width to 80% of the page
+                align_items='flex-start',       # Center align all items vertically
+                width='100%',                   # Limit width to 80% of the page
                 margin='0 auto',                # Center the VBox horizontally
                 padding='20px',                 # Add p0dding around the whole container
                 border='solid 2px #ddd'))       # Border around the VBox
