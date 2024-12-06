@@ -21,7 +21,8 @@ class ApertureData:
                  path_b1: str,
                  path_b2: Optional[str] = None,
                  n: Optional[float] = 0,
-                 emitt: Optional[str] = 3.5e-6):
+                 emitt: Optional[str] = 3.5e-6,
+                 label = None):
         
         """
         Initialize the AperData class with necessary configurations.
@@ -44,6 +45,7 @@ class ApertureData:
         self.gamma = self.line_b1.particle_ref.to_pandas()['gamma0'][0]
         self.beta = self.line_b1.particle_ref.to_pandas()['beta0'][0]
         self.length = self.line_b1.get_length()
+        self.label = label
 
         # Find knobs
         self._define_knobs()
@@ -61,6 +63,11 @@ class ApertureData:
         self._define_nominal_crossing()
         self._distance_to_nominal('horizontal')
         self._distance_to_nominal('vertical')
+
+    def print_to_label(self, string):
+        if self.label is not None:
+            self.label.value = string
+        else: print_and_clear(string)
 
     def _load_lines_data(self, path_b1: str, path_b2: str) -> None:
         """Load lines data from a JSON file.
@@ -115,11 +122,11 @@ class ApertureData:
         Compute and process the twiss parameters for both beams.
         """
         # Generate twiss
-        print_and_clear('Computing twiss for beam 1...')
+        self.print_to_label('Computing twiss for beam 1...')
         tw_b1 = self.line_b1.twiss(skip_global_quantities=True).to_pandas()
-        print_and_clear('Computing twiss for beam 2...')
+        self.print_to_label('Computing twiss for beam 2...')
         tw_b2 = self.line_b2.twiss(skip_global_quantities=True, reverse=True).to_pandas()
-        print_and_clear('Done computing twiss.')
+        self.print_to_label('Done computing twiss.')
 
         # Process the twiss DataFrames
         self.tw_b1 = self._process_twiss(tw_b1)
@@ -174,10 +181,10 @@ class ApertureData:
         self.tw_b1 = self.tw_b1.copy()
         self.tw_b2 = self.tw_b2.copy()
 
-        self.tw_b1.loc[:, from_nom_to_top] = (self.tw_b1[up] - self.nom_b1[nom])*1000
+        self.tw_b1.loc[:, from_nom_to_top] = abs(self.tw_b1[up] - self.nom_b1[nom])*1000
         self.tw_b1.loc[:, from_nom_to_bottom] = abs(self.tw_b1[down] - self.nom_b1[nom])*1000
 
-        self.tw_b2.loc[:, from_nom_to_top] = (self.tw_b2[up] - self.nom_b2[nom])*1000
+        self.tw_b2.loc[:, from_nom_to_top] = abs(self.tw_b2[up] - self.nom_b2[nom])*1000
         self.tw_b2.loc[:, from_nom_to_bottom] = abs(self.tw_b2[down] - self.nom_b2[nom])*1000
 
     def _define_sigma(self) -> None:
@@ -209,7 +216,7 @@ class ApertureData:
         if len(element_positions) == 0:
             # Don't cycle
             shift = 0
-            print_and_clear(f"Element '{first_element}' not found in the DataFrame.")
+            self.print_to_label(f"Element '{first_element}' not found in the DataFrame.")
         else:
             # Save the first element for the case of retwissing
             self.first_element = first_element
@@ -296,7 +303,7 @@ class ApertureData:
                         try:
                             setattr(self, attr, shift_by(getattr(self, attr), shift, shift_type))
                         except Exception as e:
-                            print_and_clear(f"Error shifting {attr}: {e}")
+                            self.print_to_label(f"Error shifting {attr}: {e}")
 
     def envelope(self, n: float) -> None:
         """
@@ -578,7 +585,7 @@ class ApertureData:
         """
         element_position = find_s_value(element, self)
         if element_position == None:
-            print_and_clear('Incorrect element')
+            self.print_to_label('Incorrect element')
             return
         
         if beam == 'beam 1':
@@ -603,7 +610,7 @@ class ApertureData:
             # If not check is available in the data frame
             if row[['APER_TOL_1', 'APER_TOL_2', 'APER_TOL_3']].isnull().any(): 
                 # If not return
-                print_and_clear('Aperture tolerance not defined')
+                self.print_to_label('Aperture tolerance not defined')
                 return
             # Else take errors from the dataframe
             else: rtol, xtol, ytol = row.APER_TOL_1, row.APER_TOL_2, row.APER_TOL_3
@@ -792,10 +799,10 @@ class ApertureData:
                 end_element = tw.at[previous_index, 'name']
 
         except: 
-            print_and_clear('Something is wrong with the correctors')
+            self.print_to_label('Something is wrong with the correctors')
             return False
                 
-        print_and_clear(f'Applying a {mcb_count}C-bump...')
+        self.print_to_label(f'Applying a {mcb_count}C-bump...')
         if tw0 is None:
             tw0 = line.twiss()
 
@@ -811,8 +818,6 @@ class ApertureData:
             # Get knobs that control relevant mcb elements
             vars_list = [str(line.element_refs[i].knl[0]._expr) for i in relevant_mcbs]
             varylist = [re.search(r"vars\['(.*?)'\]", expr).group(1) for expr in vars_list]
-
-        targets = [target1, target2]
 
         try:
             self.opt = line.match(
@@ -833,7 +838,7 @@ class ApertureData:
             return True
 
         except Exception as e: 
-            print(e)
+            self.print_to_label(e)
             return False
         
     def get_ir_boundries(self, ir):

@@ -13,7 +13,7 @@ from aper_package.utils import shift_by, print_and_clear
 
 class BPMData:
 
-    def __init__(self, spark):
+    def __init__(self, spark, label=None):
         """
         Initializes the BPMData class.
 
@@ -23,6 +23,12 @@ class BPMData:
 
         # initialise the logging
         self.ldb = pytimber.LoggingDB(spark_session=spark)
+        self.label = label
+    
+    def print_to_label(self, string):
+        if self.label is not None:
+            self.label.value = string
+        else: print_and_clear(string)
 
     def load_data(self, t: datetime) -> None:
         """
@@ -32,7 +38,7 @@ class BPMData:
             t: A datetime object or a list containing a datetime object representing the time to fetch data.
         """
         
-        print_and_clear("Loading BPM data...")
+        self.print_to_label("Loading BPM data...")
 
         # Define the end time for data fetching
         end_time = t + timedelta(seconds=1)
@@ -41,9 +47,9 @@ class BPMData:
         try:
             bpm_positions_h = self.ldb.get('BFC.LHC:OrbitAcq:positionsH', t, end_time)
             bpm_positions_v = self.ldb.get('BFC.LHC:OrbitAcq:positionsV', t, end_time)
-            bpm_names_data = self.ldb.get('BFC.LHC:Mappings:fBPMNames_h', t, t + timedelta(minutes=1))
+            bpm_names_data = self.ldb.get('BFC.LHC:Mappings:fBPMNames_h', t, t + timedelta(weeks=1))
         except Exception as e:
-            print_and_clear(f"Error loading BPM data: {e}")
+            self.print_to_label(f"Error loading BPM data: {e}")
             return
 
         try:
@@ -63,7 +69,7 @@ class BPMData:
 
         except KeyError: self.data = None
 
-        print_and_clear("Done loading BPM data.")
+        self.print_to_label("Done loading BPM data.")
 
     def process(self, twiss: object) -> None:
         """
@@ -73,7 +79,7 @@ class BPMData:
             twiss: An ApertureData object containing Twiss data for beam 1 and beam 2.
         """
         if self.data is None:
-            print("No BPM data to process. Please load data first.")
+            self.print_to_label("No BPM data to process. Please load data first.")
             return
         
         # Merge BPM data with Twiss data to find positions
@@ -309,7 +315,7 @@ class CollimatorsData:
         for i, name in enumerate(names_b1): names_b1[i]=name+':MEAS_LVDT_GD'
         for i, name in enumerate(names_b2): names_b2[i]=name+':MEAS_LVDT_GD'
 
-        print_and_clear("Loading collimators data...")
+        self.print_to_label("Loading collimators data...")
 
         col_b1_from_timber = self.ldb.get(names_b1, t, t+timedelta(seconds=1)) 
         col_b2_from_timber = self.ldb.get(names_b2, t, t+timedelta(seconds=1))
@@ -335,7 +341,7 @@ class CollimatorsData:
         self.coly_b1 = col_b1[col_b1['angle']==90].dropna()
         self.coly_b2 = col_b2[col_b2['angle']==90].dropna()
 
-        print_and_clear("Done loading collimators data.")
+        self.print_to_label("Done loading collimators data.")
         
     def process(self, twiss: object) -> None:
         """

@@ -1120,7 +1120,7 @@ class InteractiveTool():
                     self.n1_output.clear_output()  # Clear previous output
                     display(Latex(f'Incorrect element'))
 
-        else: print_and_clear('Load the aperture data')
+        else: self.progress_label.value = 'Load the aperture data'
 
     def add_trace_to_2d_plot_button_clicked(self, b):
         """
@@ -1166,7 +1166,7 @@ class InteractiveTool():
             delta_co = self.delta_co_input.value
         else: delta_beta, delta, delta_co, rtol, xtol, ytol = 0, 0, 0, 0, 0, 0
 
-        print_and_clear('Generating the cross-section...')
+        self.progress_label.value = 'Generating the cross-section...'
         # Generate and store as attributes the cross-sctions
         self.cross_section_b1 = generate_2d_plot(element, 'beam 1', self.aperture_data, n, rtol, xtol, ytol, delta_beta, delta, delta_co, 450, 450)
         self.cross_section_b2 = generate_2d_plot(element, 'beam 2', self.aperture_data, n, rtol, xtol, ytol, delta_beta, delta, delta_co, 450, 450)
@@ -1343,7 +1343,7 @@ class InteractiveTool():
         if ir == 'other': s_range = self.s_range_slider.value
         else: s_range = self.aperture_data.get_ir_boundries(ir)        
 
-        if s_range[0]>s_range[1]: print_and_clear('Try cycling the graph first so that the IR is not on the edge.')
+        if s_range[0]>s_range[1]: self.progress_label.value = 'Try cycling the graph first so that the IR is not on the edge.'
         else: 
             self.best_fit_angle, self.best_fit_uncertainty = self.BPM_data.least_squares_fit(self.aperture_data, init_angle, knob, self.plane, self.angle_range, s_range)
 
@@ -1415,7 +1415,13 @@ class InteractiveTool():
             padding='10px',
             border='solid 2px #eee'))
         
-        full_column = [tab, self.graph_container]
+        self.progress_label = Label(
+            value='',
+            width='100%',
+            layout=widgets.Layout(justify_content='flex-start')
+        )
+        
+        full_column = [tab, self.progress_label, self.graph_container]
 
         # Combine both rows, knob box, and graph container into a VBox layout
         self.full_layout = VBox(
@@ -1470,12 +1476,12 @@ class InteractiveTool():
             load_function: The function to call to load the data.
         """
         if not path:
-            print_and_clear('Please select a file by clicking the Select button.')
+            self.progress_label.value = 'Please select a file by clicking the Select button.'
             return
 
         _, actual_extension = os.path.splitext(path)
         if actual_extension != expected_extension:
-            print_and_clear(f'Invalid file type. Please select a {expected_extension} file.')
+            self.progress_label.value = f'Invalid file type. Please select a {expected_extension} file.'
             return
 
         if path_replacement:
@@ -1483,10 +1489,10 @@ class InteractiveTool():
             for old, new in path_replacement.items():
                 path_to_check = path_to_check.replace(old, new)
             if not os.path.exists(path_to_check):
-                print_and_clear(f"Path for the corresponding file doesn't exist.")  # TODO: Add an option for path selection
+                self.progress_label.value = f"Path for the corresponding file doesn't exist."  # TODO: Add an option for path selection
                 return
 
-        print_and_clear(f'Loading new {expected_extension[1:].upper()} data...')
+        self.progress_label.value = f'Loading new {expected_extension[1:].upper()} data...'
         load_function(path)
         
     def _load_line_data(self, path):
@@ -1511,17 +1517,17 @@ class InteractiveTool():
             self.update_knob_box()
 
         # Load new aperture data
-        self.aperture_data = ApertureData(path_b1=path)
+        self.aperture_data = ApertureData(path_b1=path, label=self.progress_label)
 
         # Make sure not to load the aperture and optics twice
         # So only load if the path was already provided and not changed
         if self.path_aperture and self.path_aperture == self.file_chooser_aperture.selected:
             # Re-load aperture and optics data if selected
-            print_and_clear('Re-loading aperture data...')
+            self.progress_label.value = 'Re-loading aperture data...'
             self.aperture_data.load_aperture(self.file_chooser_aperture.selected)
 
         if self.path_optics and self.path_optics == self.file_chooser_optics.selected:
-            print_and_clear('Re-loading optics elements...')
+            self.progress_label.value = 'Re-loading optics elements...'
             self.aperture_data.load_elements(self.file_chooser_optics.selected)
 
         # Restore previous envelope and cycle settings
@@ -1559,7 +1565,7 @@ class InteractiveTool():
         if hasattr(self, 'aperture_data'):
             self.aperture_data.load_aperture(path)
         else:
-            print_and_clear('You need to load a line first.')
+            self.progress_label.value = 'You need to load a line first.'
 
     def _load_optics_data(self, path):
         """
@@ -1571,7 +1577,7 @@ class InteractiveTool():
         if hasattr(self, 'aperture_data'):
             self.aperture_data.load_elements(path)
         else:
-            print_and_clear('You need to load a line first.')
+            self.progress_label.value = 'You need to load a line first.'
 
     def handle_timber_loading(self, data_loader, data_type, update_condition):
         """
@@ -1587,7 +1593,7 @@ class InteractiveTool():
         selected_time_str = self.time_input.value
 
         if not selected_date or not selected_time_str:
-            print_and_clear(f"Select both a date and a time to load {data_type} data.")
+            self.progress_label.value = f"Select both a date and a time to load {data_type} data."
             return
 
         try:
@@ -1605,10 +1611,10 @@ class InteractiveTool():
             if update_condition():
                 self.update_graph()
             else:
-                print_and_clear(f"{data_type} data not found for the specified time.")
+                self.progress_label.value = f"{data_type} data not found for the specified time."
 
         except ValueError:
-            print_and_clear("Invalid time format. Please use HH:MM:SS.")
+            self.progress_label.value = "Invalid time format. Please use HH:MM:SS."
 
     def on_load_BPMs_button_clicked(self, b):
         """
@@ -1701,7 +1707,7 @@ class InteractiveTool():
                 # Re-twiss
                 self.aperture_data.twiss()
             except: 
-                print_and_clear('Could not compute twiss. Try again with different knob values.')
+                self.progress_label.value = 'Could not compute twiss. Try again with different knob values.'
 
         # Retrieve the selected element from the widget
         first_element = self.cycle_input.value
@@ -1710,18 +1716,18 @@ class InteractiveTool():
             if hasattr(self.aperture_data, 'first_element'): 
                 # if this is different than the current one
                 if self.aperture_data.first_element != first_element:
-                    print_and_clear(f'Setting {first_element} as the first element...')
+                    self.progress_label.value = f'Setting {first_element} as the first element...'
                     # Cycle
                     self.aperture_data.cycle(first_element)
             # If the first element was not set before, cycle
             else: 
-                print_and_clear(f'Setting {first_element} as the first element...')
+                self.progress_label.value = f'Setting {first_element} as the first element...'
                 self.aperture_data.cycle(first_element)
 
         # If new, change the size of the envelope
         selected_size = self.envelope_input.value
         if self.aperture_data.n != selected_size:
-            print_and_clear(f'Setting envelope size to {selected_size}...')
+            self.progress_label.value = f'Setting envelope size to {selected_size}...'
             self.aperture_data.envelope(selected_size)
 
         ir = self.main_ir_dropdown.value
@@ -1730,7 +1736,7 @@ class InteractiveTool():
             self.plot_range = self.aperture_data.get_ir_boundries(ir)
             if self.plot_range[0]>self.plot_range[1]: 
                 ip = f"ip{(int(ir[2:]) - 1) or 8}"
-                print_and_clear('Oops, to see this IR you need to cycle the graph first...')
+                self.progress_label.value = 'Oops, to see this IR you need to cycle the graph first...'
                 self.aperture_data.cycle(ip)
                 self.cycle_input.value = ip
                 self.plot_range = self.aperture_data.get_ir_boundries(ir)  
