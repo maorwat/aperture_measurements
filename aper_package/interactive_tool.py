@@ -1227,8 +1227,8 @@ class InteractiveTool():
         """
         # Only add timber buttons if spark given as an argument
 
-        self.collimator_data = CollimatorsData(self.spark)
-        self.BPM_data = BPMData(self.spark)
+        self.collimator_data = CollimatorsData(self.spark, label=self.progress_label)
+        self.BPM_data = BPMData(self.spark, label=self.progress_label)
             
         # Time selection widgets
         self.create_time_widgets()
@@ -1381,6 +1381,12 @@ class InteractiveTool():
         """
         Define and arrange the layout of the widgets.
         """
+        self.progress_label = Label(
+            value='',
+            width='100%',
+            layout=widgets.Layout(justify_content='flex-start')
+        )
+        
         # Main tab 
         main_vbox = self.define_main_tab()
 
@@ -1414,12 +1420,6 @@ class InteractiveTool():
             width='100%',
             padding='10px',
             border='solid 2px #eee'))
-        
-        self.progress_label = Label(
-            value='',
-            width='100%',
-            layout=widgets.Layout(justify_content='flex-start')
-        )
         
         full_column = [tab, self.progress_label, self.graph_container]
 

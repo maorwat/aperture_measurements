@@ -277,6 +277,7 @@ class CollimatorsData:
 
     def __init__(self, 
                  spark,
+                 label=None,
                  yaml_path: Union[str, List[str]] = '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
         """
         Initializes the CollimatorsData class.
@@ -288,6 +289,7 @@ class CollimatorsData:
         # initialise the logging
         self.ldb = pytimber.LoggingDB(spark_session=spark)
         self.yaml_path = yaml_path
+        self.label = label
 
     def load_data(self, t: datetime) -> None:
         """
@@ -386,3 +388,8 @@ class CollimatorsData:
         col.loc[:, 'bottom_gap_col'] = -col['gap'] + col[position_key]
         
         return col
+    
+    def print_to_label(self, string):
+        if self.label is not None:
+            self.label.value = string
+        else: print_and_clear(string)
