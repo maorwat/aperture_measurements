@@ -1433,37 +1433,6 @@ class InteractiveTool():
                 padding='20px',                 # Add p0dding around the whole container
                 border='solid 2px #ddd'))       # Border around the VBox
 
-    def on_load_all_button_clicked(self, b):
-
-        if self.path_line != self.file_chooser_line.selected:
-            self.path_line = self.file_chooser_line.selected
-            self._handle_load_button_click(
-                path = self.path_line,
-                expected_extension='.json',
-                path_replacement={'b1': 'b2'},
-                load_function=self._load_line_data
-            )
-
-        if self.path_aperture != self.file_chooser_aperture.selected:
-            self.path_aperture = self.file_chooser_aperture.selected
-            self._handle_load_button_click(
-                path=self.path_aperture,
-                expected_extension='.tfs',
-                path_replacement={'B1': 'B4'},
-                load_function=self._load_aperture_data
-            )
-
-        if self.path_optics != self.file_chooser_optics.selected:
-            self.path_optics = self.file_chooser_optics.selected
-            self._handle_load_button_click(
-                path=self.path_optics,
-                expected_extension='.tfs',
-                path_replacement=None,
-                load_function=self._load_optics_data
-            )
-
-        self.update_graph()
-
     def _handle_load_button_click(self, path, expected_extension, path_replacement, load_function):
         """
         Handles common file validation and loading logic for various buttons.

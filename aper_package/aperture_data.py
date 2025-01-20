@@ -507,8 +507,8 @@ class ApertureData:
         if not path_b2: path_b2 = str(path_b1).replace('B1', 'B4')
 
         # Drop uneeded columns
-        df1 = tfs.read(path_b1)[['S', 'NAME', 'APER_1', 'APER_2', 'APER_3', 'APER_4', 'MECH_SEP']]
-        df2 = tfs.read(path_b2)[['S', 'NAME', 'APER_1', 'APER_2', 'APER_3', 'APER_4', 'MECH_SEP']]
+        df1 = tfs.read(path_b1)[['NAME', 'APER_1', 'APER_2', 'APER_3', 'APER_4', 'MECH_SEP']]
+        df2 = tfs.read(path_b2)[['NAME', 'APER_1', 'APER_2', 'APER_3', 'APER_4', 'MECH_SEP']]
         # Get rid of undefined values
         df1 = df1[(df1['APER_1'] < 0.2) & (df1['APER_1'] != 0) & (df1['APER_2'] < 0.2) & (df1['APER_2'] != 0)]
         df2 = df2[(df2['APER_1'] < 0.2) & (df2['APER_1'] != 0) & (df2['APER_2'] < 0.2) & (df2['APER_2'] != 0)]
@@ -695,7 +695,7 @@ class ApertureData:
 
         """
         # Load the file
-        df = tfs.read(path)
+        df = tfs.read(path)[['NAME', 'KEYWORD', 'L', 'K1L']]
 
         # Make sure the elements align with twiss data (if cycling was performed)
         self.elements = match_with_twiss(self.tw_b1, df)

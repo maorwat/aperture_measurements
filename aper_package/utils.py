@@ -93,10 +93,10 @@ def match_with_twiss(twiss, aper_to_match):
     # Convert the 'NAME' column to lowercase to match the 'name' column in df_correct
     aper_to_match['name'] = aper_to_match['NAME'].str.lower()
 
-    # Merge the dataframes son the 'name' column
+    # Merge the dataframes on the 'name' column
     df_merged = aper_to_match.merge(twiss[['name', 's']], on='name', how='left')
 
-    df_merged = df_merged.drop(columns=['name', 'S'])
+    df_merged = df_merged.drop(columns=['name'])
 
     # Update the 'S' column in df_incorrect with the 's' values from df_correct
     df_merged.rename(columns={'s':'S'}, inplace=True)
@@ -107,8 +107,8 @@ def match_with_twiss(twiss, aper_to_match):
     return df_merged
 
 def print_and_clear(message):
-
-    print(message+'                                                                            ', end="\r")
+    #need to get rid of that
+    print(message)
 
 def transform_string(s):
         # Replace 'acb' with 'mcb'
