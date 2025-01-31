@@ -9,7 +9,7 @@ import pytimber
 from datetime import datetime, timedelta
 from scipy.optimize import least_squares
 
-from aper_package.utils import shift_by, print_and_clear
+from aper_package.utils import shift_by
 
 class BPMData:
 
@@ -28,11 +28,11 @@ class BPMData:
     def print_to_label(self, string):
         if self.label is not None:
             self.label.value = string
-        else: print_and_clear(string)
+        else: print(string)
 
     def load_data(self, t: datetime) -> None:
         """
-        Loads BPM data from Timber.
+        Load BPM data from Timber.
 
         Parameters:
             t: A datetime object or a list containing a datetime object representing the time to fetch data.
@@ -72,14 +72,14 @@ class BPMData:
         self.print_to_label("Done loading BPM data.")
 
     def process(self, twiss: object) -> None:
-        """
-        Processes the loaded BPM data by merging it with the Twiss data to find BPM positions.
+        """Process the loaded BPM data by merging it 
+        with the Twiss data to find BPM positions.
 
         Parameters:
             twiss: An ApertureData object containing Twiss data for beam 1 and beam 2.
         """
         if self.data is None:
-            self.print_to_label("No BPM data to process. Please load data first.")
+            self.print_to_label("No BPM data to process. Load data first.")
             return
         
         # Merge BPM data with Twiss data to find positions
@@ -109,13 +109,11 @@ class BPMData:
             
         return residuals
 
-    def least_squares_fit(self,
-                        aper_data: object,
-                        init_angle: float,
-                        knob: str,
-                        plane: str,
-                        angle_range: Optional[Tuple[float, float]] = (-500, 500), 
-                        s_range: Optional[Tuple[float, float]] = None):
+    def least_squares_fit(
+            self, aper_data: object, init_angle: float,
+            knob: str, plane: str,
+            angle_range: Optional[Tuple[float, float]] = (-500, 500), 
+            s_range: Optional[Tuple[float, float]] = None):
         """
         Data needs to be loaded using self.load befor performing the fit.
         """
@@ -123,7 +121,9 @@ class BPMData:
         # Remove the outliers aroundd ip1 and ip5
         self.data = self.data[~self.data['name'].str.contains('bpmwf')]
 
-        result = least_squares(self._objective, x0=[init_angle], bounds=angle_range, args=(aper_data, knob, s_range, plane))
+        result = least_squares(
+            self._objective, x0=[init_angle], bounds=angle_range, 
+            args=(aper_data, knob, s_range, plane))
 
         # Extract the optimized parameter, Jacobian, and residuals
         params = result.x
@@ -139,7 +139,9 @@ class BPMData:
 
         return round(params[0], 2), round(param_uncertainty[0], 2)
     
-    def _local_bump_simulate(self, size, element, aper_data, relevant_mcbs, s_range, beam, plane, tw0):
+    def _local_bump_simulate(
+            self, size, element, aper_data, 
+            relevant_mcbs, s_range, beam, plane, tw0):
         
         # Vary the crossing angle
         aper_data.match_local_bump(element, relevant_mcbs, size, beam, plane, tw0)
@@ -151,9 +153,13 @@ class BPMData:
         # Perform the fitting on both beams simultanously
         return pd.concat([merged_b1, merged_b2], ignore_index=True)
 
-    def _local_bump_objective(self, size, element, aper_data, relevant_mcbs, s_range, beam, plane, tw0):
+    def _local_bump_objective(
+            self, size, element, aper_data, 
+            relevant_mcbs, s_range, beam, plane, tw0):
         
-        df = self._local_bump_simulate(size, element, aper_data, relevant_mcbs, s_range, beam, plane, tw0)
+        df = self._local_bump_simulate(
+            size, element, aper_data, relevant_mcbs, 
+            s_range, beam, plane, tw0)
 
         # Calculate the residuals for the plane of interest
         if plane == 'horizontal': residuals = df['x'] - df['x_simulated']
@@ -161,28 +167,27 @@ class BPMData:
 
         return residuals
     
-    def local_bump_least_squares_fit(self,
-                        element: str,
-                        aper_data: object,
-                        init_size: float,
-                        relevant_mcbs: list,
-                        beam: str,
-                        plane: str,
-                        size_range: Optional[Tuple[float, float]] = (-15, 15), 
-                        s_range: Optional[Tuple[float, float]] = None):
-        """
-        Data needs to be loaded using self.load befor performing the fit.
-        """
+    def local_bump_least_squares_fit(
+            self, element: str, aper_data: object,
+            init_size: float, relevant_mcbs: list,
+            beam: str, plane: str,
+            size_range: Optional[Tuple[float, float]] = (-15, 15), 
+            s_range: Optional[Tuple[float, float]] = None):
+
         if beam == 'beam 1': line = aper_data.line_b1
         elif beam == 'beam 2': line = aper_data.line_b2
 
         tw0 = line.twiss()
-        result = least_squares(self._local_bump_objective, x0=[init_size], bounds=size_range, args=(element, aper_data, relevant_mcbs, s_range, beam, plane, tw0), diff_step=1e-3)
+        result = least_squares(
+            self._local_bump_objective, x0=[init_size], bounds=size_range, 
+            args=(element, aper_data, relevant_mcbs, s_range, beam, plane, tw0), diff_step=1e-3)
 
         # Extract the optimized parameter, Jacobian, and residuals
         params = result.x
         jacobian = result.jac
-        residuals = self._local_bump_objective(params, element, aper_data, relevant_mcbs, s_range, beam, plane, tw0)
+        residuals = self._local_bump_objective(
+            params, element, aper_data, relevant_mcbs, 
+            s_range, beam, plane, tw0)
         
         # Compute statistics
         n = len(residuals)
@@ -193,14 +198,16 @@ class BPMData:
 
         return round(params[0], 2), round(param_uncertainty[0], 2)
     
-    def _yasp_bump_simulate(self, scale_factors, aper_data, s_range, final_bump_container, bump_dict):
+    def _yasp_bump_simulate(
+            self, scale_factors, aper_data, s_range, 
+            final_bump_container, bump_dict):
         
         # Vary the scaling
         for n,bump_hbox in enumerate(final_bump_container.children):
             bump_name = bump_hbox.children[0].value
 
             float_inputs = bump_dict[bump_name]['float_inputs']
-            selected_beam = bump_dict[bump_name]['vbox'].children[0].value  # Get the selected beam
+            selected_beam = bump_dict[bump_name]['vbox'].children[0].value
 
             # Iterate over all knobs in the bump definition and scale them accordingly    
             for i in float_inputs:
@@ -216,9 +223,13 @@ class BPMData:
         # Perform the fitting on both beams simultanously
         return pd.concat([merged_b1, merged_b2], ignore_index=True)
 
-    def _yasp_bump_objective(self, scale_factors, aper_data, s_range, final_bump_container, bump_dict):
+    def _yasp_bump_objective(
+            self, scale_factors, aper_data, s_range, 
+            final_bump_container, bump_dict):
         
-        df = self._yasp_bump_simulate(scale_factors, aper_data, s_range, final_bump_container, bump_dict)
+        df = self._yasp_bump_simulate(
+            scale_factors, aper_data, s_range, 
+            final_bump_container, bump_dict)
 
         # Calculate the residuals for the plane of interest
         residuals_x = df['x'] - df['x_simulated']
@@ -228,14 +239,11 @@ class BPMData:
         
         return residuals
     
-    def yasp_bump_least_squares_fit(self,
-                                    aper_data, 
-                                    s_range, 
-                                    final_bump_container, 
-                                    bump_dict):
-        """
-        Data needs to be loaded using self.load befor performing the fit.
-        """
+    def yasp_bump_least_squares_fit(
+            self, aper_data, s_range, 
+            final_bump_container, bump_dict):
+
+        #TODO: make s_range optional
         initial_guess = []
         for bump_hbox in final_bump_container.children:
             bump_name = bump_hbox.children[0].value
@@ -243,12 +251,15 @@ class BPMData:
 
             initial_guess.append(bump_float_value)
 
-        result = least_squares(self._yasp_bump_objective, x0=initial_guess, args=(aper_data, s_range, final_bump_container, bump_dict), diff_step=1e-3)
+        result = least_squares(
+            self._yasp_bump_objective, x0=initial_guess, 
+            args=(aper_data, s_range, final_bump_container, bump_dict), diff_step=1e-3)
 
         # Extract the optimized parameter, Jacobian, and residuals
         params = result.x
         jacobian = result.jac
-        residuals = self._yasp_bump_objective(params, aper_data, s_range, final_bump_container, bump_dict)
+        residuals = self._yasp_bump_objective(
+            params, aper_data, s_range, final_bump_container, bump_dict)
 
         # Compute statistics
         n = len(residuals)
@@ -269,7 +280,8 @@ class BPMData:
         merged = pd.merge(self.data, simulated_data, on='name').sort_values(by='s').reset_index(drop=True)
         
         # If range was specified, use it
-        if s_range: merged = merged[(merged['s'] >= s_range[0]) & (merged['s'] <= s_range[1])]
+        if s_range: 
+            merged = merged[(merged['s'] >= s_range[0]) & (merged['s'] <= s_range[1])]
         
         return merged
 
@@ -279,8 +291,7 @@ class CollimatorsData:
                  spark,
                  label=None,
                  yaml_path: Union[str, List[str]] = '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
-        """
-        Initializes the CollimatorsData class.
+        """Initialize the CollimatorsData class.
 
         Parameters:
             spark: Spark session for accessing the LoggingDB.
@@ -292,8 +303,7 @@ class CollimatorsData:
         self.label = label
 
     def load_data(self, t: datetime) -> None:
-        """
-        Loads collimator data from the specified YAML file and Timber.
+        """Load collimator data from the specified YAML file and Timber.
 
         Parameters:
             t: Datetime object representing the time to fetch data.
@@ -346,8 +356,7 @@ class CollimatorsData:
         self.print_to_label("Done loading collimators data.")
         
     def process(self, twiss: object) -> None:
-        """
-        Processes the loaded collimator data with the provided Twiss data.
+        """Process the loaded collimator data with the provided Twiss data.
 
         Parameters:
             twiss: An ApertureData object containing Twiss data for beam 1 and beam 2.
@@ -358,12 +367,10 @@ class CollimatorsData:
         self.coly_b1 = self._add_collimator_positions(twiss.tw_b1, self.coly_b1, 'y')
         self.coly_b2 = self._add_collimator_positions(twiss.tw_b2, self.coly_b2, 'y')
                
-    def _add_collimator_positions(self, 
-                                  twiss: pd.DataFrame, 
-                                  col: pd.DataFrame, 
-                                  position_key: str) -> pd.DataFrame:
-        """
-        Merges collimator data with Twiss data to add positions.
+    def _add_collimator_positions(
+            self, twiss: pd.DataFrame, 
+            col: pd.DataFrame, position_key: str) -> pd.DataFrame:
+        """Merge collimator data with Twiss data to add positions.
 
         Parameters:
             twiss: DataFrame containing Twiss data.
@@ -392,4 +399,4 @@ class CollimatorsData:
     def print_to_label(self, string):
         if self.label is not None:
             self.label.value = string
-        else: print_and_clear(string)
+        else: print(string)

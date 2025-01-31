@@ -3,13 +3,12 @@ import pandas as pd
 
 import plotly.graph_objects as go
 from typing import List, Tuple
-from aper_package.utils import merge_twiss_and_aper, print_and_clear, find_s_value
+from aper_package.utils import merge_twiss_and_aper, find_s_value
 
-def plot_BPM_data(data: object, 
-                  plane: str, 
-                  twiss: object) -> Tuple[np.ndarray, List[go.Scatter]]:
-    """
-    Assign all BPMs to positions s based on twiss data and generate Plotly traces.
+def plot_BPM_data(
+        data: object, plane: str, 
+        twiss: object) -> Tuple[np.ndarray, List[go.Scatter]]:
+    """Assign all BPMs to positions s based on twiss data and generate Plotly traces.
 
     Parameters:
         data: An object BPMData, expected to have attribute data.
@@ -17,38 +16,59 @@ def plot_BPM_data(data: object,
         twiss: An ApertureData object containing aperture data used for processing BPM positions.
 
     Returns:
-        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing an array of booleans and a list of Plotly scatter traces.
+        Tuple[np.ndarray, List[go.Scatter]]: 
+            A tuple containing an array of booleans and a list of Plotly scatter traces.
     """
     # Assign BPMs to some position along the ring s by merging with twiss
     data.process(twiss)
 
     # Select data based on plane
-    if plane == 'horizontal': y_b1, y_b2 = data.b1.x, data.b2.x
-    elif plane == 'vertical': y_b1, y_b2 = data.b1.y, data.b2.y
+    if plane == 'horizontal': 
+        y_b1, y_b2 = data.b1.x, data.b2.x
+    elif plane == 'vertical': 
+        y_b1, y_b2 = data.b1.y, data.b2.y
 
     # Make sure the units are in meters like twiss data
-    b1 = go.Scatter(x=data.b1.s, y=y_b1, mode='markers', 
-                          line=dict(color='blue'), text = data.b1.name, name='BPM beam 1')
+    b1 = go.Scatter(
+        x=data.b1.s, 
+        y=y_b1, 
+        mode='markers', 
+        line=dict(color='blue'), 
+        text = data.b1.name, 
+        name='BPM beam 1')
     
-    b2 = go.Scatter(x=data.b2.s, y=y_b2, mode='markers', 
-                          line=dict(color='red'), text = data.b2.name, name='BPM beam 2', visible=False)
+    b2 = go.Scatter(
+        x=data.b2.s, 
+        y=y_b2, 
+        mode='markers', 
+        line=dict(color='red'), 
+        text = data.b2.name, 
+        name='BPM beam 2', 
+        visible=False)
     
     return np.array([True, False]), [b1, b2]
 
 def plot_machine_components(data: object) -> Tuple[np.ndarray, List[go.Scatter]]:
-    """
-    Generates Plotly traces for various machine components based on their type and position.
+    """Generate Plotly traces for various machine components based on their type and position.
 
     Parameters:
-        data: An ApertureData object containing machine element data, expected to have a DataFrame 'elements'
+        data: An ApertureData object containing machine element data, 
+        expected to have a DataFrame 'elements'
               with columns 'KEYWORD', 'S', 'L', 'K1L', and 'NAME'.
 
     Returns:
-        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing an array of visibility flags and a list of Plotly scatter traces.
+        Tuple[np.ndarray, List[go.Scatter]]: 
+            A tuple containing an array of visibility flags and a list of Plotly scatter traces.
     """
     # Specify the elements to plot and corresponding colors
-    objects = ["SBEND", "COLLIMATOR", "SEXTUPOLE", "RBEND", "QUADRUPOLE"]
-    colors = ['lightblue', 'black', 'hotpink', 'green', 'red']
+    objects = [
+        "SBEND", "COLLIMATOR", "SEXTUPOLE", 
+        "RBEND", "QUADRUPOLE"
+        ]
+    colors = [
+        'lightblue', 'black', 
+        'hotpink', 'green', 'red'
+        ]
 
     # Dictionary to store combined data for each object type
     combined_traces = {obj: {'x': [], 'y': [], 'name': []} for obj in objects}
@@ -114,23 +134,24 @@ def plot_machine_components(data: object) -> Tuple[np.ndarray, List[go.Scatter]]
     return visibility_arr, traces
 
 def plot_collimators_from_yaml(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
-    """
-    Plot collimators based on YAML data.
+    """Plot collimators based on YAML data.
 
     Parameters:
         data: An ApertureData object containing collimator data.
         plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
 
     Returns:
-        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and the list of Plotly scatter traces.
+        Tuple[np.ndarray, List[go.Scatter]]: 
+            A tuple containing the visibility array and the list of Plotly scatter traces.
     """
     
     return plot_collimators(data, plane)
 
-def plot_collimators_from_timber(collimator_data: object, data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
+def plot_collimators_from_timber(
+        collimator_data: object, data: object, plane: str
+        ) -> Tuple[np.ndarray, List[go.Scatter]]:
     
-    """
-    Plot collimators after processing data from TIMBER.
+    """Plot collimators after processing data from TIMBER.
 
     Parameters:
         collimator_data: A CollimatorData object containing raw collimator data.
@@ -138,22 +159,24 @@ def plot_collimators_from_timber(collimator_data: object, data: object, plane: s
         plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
 
     Returns:
-        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and the list of Plotly scatter traces.
+        Tuple[np.ndarray, List[go.Scatter]]: 
+            A tuple containing the visibility array and the list of Plotly scatter traces.
     """
     collimator_data.process(data)
     
     return plot_collimators(collimator_data, plane)
 
 def plot_collimators(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
-    """
-    Plot collimators for a given plane.
+    """Plot collimators for a given plane.
 
     Parameters:
-        data: An object containing collimator data with attributes `colx_b1`, `colx_b2`, `coly_b1`, `coly_b2`.
-        plane: A string indicating the plane ('horizontal' for horizontal, 'vertical' for vertical).
+        data: An object containing collimator data 
+            with attributes `colx_b1`, `colx_b2`, `coly_b1`, `coly_b2`.
+        plane: A string indicating the plane.
 
     Returns:
-        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and the list of Plotly scatter traces.
+        Tuple[np.ndarray, List[go.Scatter]]: 
+            A tuple containing the visibility array and the list of Plotly scatter traces.
     """
     # Select the appropriate DataFrames based on the plane
     if plane == 'horizontal':
@@ -232,15 +255,15 @@ def plot_collimators(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scat
     return visibility_arr, collimators
 
 def plot_envelopes(data: object, plane: str):
-    """
-    Plot the beam envelopes for a given plane.
+    """Plot the beam envelopes for a given plane.
 
     Parameters:
         data: An ApertureData object containing beam envelope data for beam 1 and beam 2.
         plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
 
     Returns:
-        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and a list of Plotly scatter traces.
+        Tuple[np.ndarray, List[go.Scatter]]: 
+            A tuple containing the visibility array and a list of Plotly scatter traces.
     """
     
     upper_b1 = create_envelope(data.tw_b1, plane, 'beam 1', 'up', None, True)
@@ -254,147 +277,229 @@ def plot_envelopes(data: object, plane: str):
     return visibility, traces
 
 def create_envelope(twiss_df, plane, beam, up_or_down, fill, visibility):
-
     # Define hover template with customdata
-    hover_template = ("s: %{x:.2f} [m]<br>"
-                        "x: %{y:.4f} [m]<br>"
-                        "x: %{customdata[2]:.2f} [σ]<br>"
-                        "element: %{text}<br>"
-                        "distance from nominal: %{customdata[0]:.2f} [mm]<br>"
-                        "distance from nominal: %{customdata[1]:.2f} [σ]")
+    hover_template = (
+        "s: %{x:.2f} [m]<br>"
+        "x: %{y:.4f} [m]<br>"
+        "x: %{customdata[2]:.2f} [σ]<br>"
+        "element: %{text}<br>"
+        "distance from nominal: %{customdata[0]:.2f} [mm]<br>"
+        "distance from nominal: %{customdata[1]:.2f} [σ]"
+    )
     
     base_column = 'x' if plane == 'horizontal' else 'y'
     
-    position_column, sigma = base_column+'_'+up_or_down, 'sigma_'+base_column
+    position_column, sigma = f'{base_column}_{up_or_down}', f'sigma_{base_column}'
     
-    if up_or_down == 'up': nom_to_envelope_column, name = base_column+'_from_nom_to_top', 'Upper envelope '+beam
-    elif up_or_down == 'down': nom_to_envelope_column, name = base_column+'_from_nom_to_bottom', 'Bottom envelope '+beam
-            
-    if beam == 'beam 1': color = 'rgba(0,0,255,0.1)'
-    elif beam == 'beam 2': color = 'rgba(255,0,0,0.1)'
+    if up_or_down == 'up':
+        nom_to_envelope_column, name = f'{base_column}_from_nom_to_top', f'Upper envelope {beam}'
+    elif up_or_down == 'down':
+        nom_to_envelope_column, name = f'{base_column}_from_nom_to_bottom', f'Bottom envelope {beam}'
+    
+    if beam == 'beam 1':
+        color = 'rgba(0,0,255,0.1)'
+    elif beam == 'beam 2':
+        color = 'rgba(255,0,0,0.1)'
 
+    customdata = list(
+        zip(
+            twiss_df[nom_to_envelope_column],
+            twiss_df[nom_to_envelope_column] * 1e-3 / twiss_df[sigma],
+            twiss_df[position_column] / twiss_df[sigma]
+        )
+    )
 
-    customdata = list(zip(twiss_df[nom_to_envelope_column], twiss_df[nom_to_envelope_column]*1e-3/twiss_df[sigma], twiss_df[position_column]/twiss_df[sigma]))
-
-    trace = go.Scatter(x=twiss_df.s, 
-            y=twiss_df[position_column], 
-            mode='lines', 
-            text=twiss_df.name, 
-            name=name, 
-            fill=fill, 
-            line=dict(color='rgba(0, 0, 0, 0)'),
-            fillcolor=color,
-            customdata=customdata, 
-            hovertemplate=hover_template,
-            visible = visibility)
+    trace = go.Scatter(
+        x=twiss_df.s, 
+        y=twiss_df[position_column], 
+        mode='lines', 
+        text=twiss_df.name, 
+        name=name, 
+        fill=fill, 
+        line=dict(color='rgba(0, 0, 0, 0)'),
+        fillcolor=color,
+        customdata=customdata, 
+        hovertemplate=hover_template,
+        visible = visibility
+        )
     
     return trace
 
 def plot_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
-    """
-    Plot the beam positions for a given plane.
+    """Plot the beam positions for a given plane.
 
     Parameters:
         data: An ApertureData object containing beam position data for beam 1 and beam 2.
         plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
 
     Returns:
-        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and a list of Plotly scatter traces.
+        Tuple[np.ndarray, List[go.Scatter]]: 
+            A tuple containing the visibility array and a list of Plotly scatter traces.
     """
 
     if plane == 'horizontal': y_b1, y_b2 = data.tw_b1.x, data.tw_b2.x
     elif plane == 'vertical': y_b1, y_b2 = data.tw_b1.y, data.tw_b2.y
 
-    b1 = go.Scatter(x=data.tw_b1.s, y=y_b1, mode='lines', line=dict(color='blue'), text = data.tw_b1.name, name='Beam 1')
-    b2 = go.Scatter(x=data.tw_b2.s, y=y_b2, mode='lines', line=dict(color='red'), text = data.tw_b2.name, name='Beam 2', visible=False)
+    b1 = go.Scatter(
+        x=data.tw_b1.s, 
+        y=y_b1, 
+        mode='lines', 
+        line=dict(color='blue'), 
+        text = data.tw_b1.name, 
+        name='Beam 1'
+        )
+    b2 = go.Scatter(
+        x=data.tw_b2.s, 
+        y=y_b2, 
+        mode='lines', 
+        line=dict(color='red'), 
+        text = data.tw_b2.name, 
+        name='Beam 2', 
+        visible=False
+        )
     
     return np.array([True, False]), [b1, b2]
 
 def plot_nominal_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
-    """
-    Plot the nominal beam positions for a given plane.
+    """Plot the nominal beam positions for a given plane.
 
     Parameters:
         data: An ApertureData object containing nominal beam position data for beam 1 and beam 2.
-        plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
+        plane: A string indicating the plane.
 
     Returns:
-        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and a list of Plotly scatter traces.
+        Tuple[np.ndarray, List[go.Scatter]]: 
+            A tuple containing the visibility array and a list of Plotly scatter traces.
     """
 
     if plane == 'horizontal': y_b1, y_b2 = data.nom_b1.x, data.nom_b2.x
     elif plane == 'vertical': y_b1, y_b2 = data.nom_b1.y, data.nom_b2.y
 
-    b1 = go.Scatter(x=data.nom_b1.s, y=y_b1, mode='lines', line=dict(color='blue', dash='dash'), text = data.nom_b1.name, name='Nominal beam 1')
-    b2 = go.Scatter(x=data.nom_b2.s, y=y_b2, mode='lines', line=dict(color='red', dash='dash'), text = data.nom_b2.name, name='Nominal beam 2', visible=False)
+    b1 = go.Scatter(
+        x=data.nom_b1.s, 
+        y=y_b1, 
+        mode='lines', 
+        line=dict(color='blue', dash='dash'), 
+        text = data.nom_b1.name, 
+        name='Nominal beam 1'
+        )
+    
+    b2 = go.Scatter(
+        x=data.nom_b2.s, 
+        y=y_b2, mode='lines', 
+        line=dict(color='red', dash='dash'), 
+        text = data.nom_b2.name, 
+        name='Nominal beam 2', 
+        visible=False
+        )
     
     return np.array([True, False]), [b1, b2]
 
 def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
-    """
-    Plot the aperture for a given plane.
+    """Plot the aperture for a given plane.
 
     Parameters:
         data: An ApertureData object containing aperture data for beam 1 and beam 2.
         plane: A string indicating the plane ('h' for horizontal, 'v' for vertical).
 
     Returns:
-        Tuple[np.ndarray, List[go.Scatter]]: A tuple containing the visibility array and a list of Plotly scatter traces.
+        Tuple[np.ndarray, List[go.Scatter]]: 
+            A tuple containing the visibility array and a list of Plotly scatter traces.
     """
 
     if plane == 'horizontal':
-            
-        # Aperture
-        top_aper_b1 = go.Scatter(x=data.aper_b1.S, y=data.aper_b1.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')
-        bottom_aper_b1 = go.Scatter(x=data.aper_b1.S, y=-data.aper_b1.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')     
-        top_aper_b2 = go.Scatter(x=data.aper_b2.S, y=data.aper_b2.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False)
-        bottom_aper_b2 = go.Scatter(x=data.aper_b2.S, y=-data.aper_b2.APER_1, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False) 
+        # Aperture for beam 1 and beam 2 in horizontal plane
+        top_aper_b1 = go.Scatter(
+            x=data.aper_b1.S, 
+            y=data.aper_b1.APER_1, 
+            mode='lines', 
+            line=dict(color='gray'), 
+            text=data.aper_b1.NAME, 
+            name='Aperture b1'
+        )
+        bottom_aper_b1 = go.Scatter(
+            x=data.aper_b1.S, 
+            y=-data.aper_b1.APER_1, 
+            mode='lines', 
+            line=dict(color='gray'), 
+            text=data.aper_b1.NAME, 
+            name='Aperture b1'
+        )
+        top_aper_b2 = go.Scatter(
+            x=data.aper_b2.S, 
+            y=data.aper_b2.APER_1, 
+            mode='lines', 
+            line=dict(color='gray'), 
+            text=data.aper_b2.NAME, 
+            name='Aperture b2', 
+            visible=False
+        )
+        bottom_aper_b2 = go.Scatter(
+            x=data.aper_b2.S, 
+            y=-data.aper_b2.APER_1, 
+            mode='lines', 
+            line=dict(color='gray'), 
+            text=data.aper_b2.NAME, 
+            name='Aperture b2', 
+            visible=False
+        )
 
     elif plane == 'vertical':
-            
-        # Aperture
-        top_aper_b1 = go.Scatter(x=data.aper_b1.S, y=data.aper_b1.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')
-        bottom_aper_b1 = go.Scatter(x=data.aper_b1.S, y=-data.aper_b1.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b1.NAME, name='Aperture b1')
-        top_aper_b2 = go.Scatter(x=data.aper_b2.S, y=data.aper_b2.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False)
-        bottom_aper_b2 = go.Scatter(x=data.aper_b2.S, y=-data.aper_b2.APER_2, mode='lines', line=dict(color='gray'), text = data.aper_b2.NAME, name='Aperture b2', visible=False) 
+        # Aperture for beam 1 and beam 2 in vertical plane
+        top_aper_b1 = go.Scatter(
+            x=data.aper_b1.S, 
+            y=data.aper_b1.APER_2, 
+            mode='lines', 
+            line=dict(color='gray'), 
+            text=data.aper_b1.NAME, 
+            name='Aperture b1'
+        )
+        bottom_aper_b1 = go.Scatter(
+            x=data.aper_b1.S, 
+            y=-data.aper_b1.APER_2, 
+            mode='lines', 
+            line=dict(color='gray'), 
+            text=data.aper_b1.NAME, 
+            name='Aperture b1'
+        )
+        top_aper_b2 = go.Scatter(
+            x=data.aper_b2.S, 
+            y=data.aper_b2.APER_2, 
+            mode='lines', 
+            line=dict(color='gray'), 
+            text=data.aper_b2.NAME, 
+            name='Aperture b2', 
+            visible=False
+        )
+        bottom_aper_b2 = go.Scatter(
+            x=data.aper_b2.S, 
+            y=-data.aper_b2.APER_2, 
+            mode='lines', 
+            line=dict(color='gray'), 
+            text=data.aper_b2.NAME, 
+            name='Aperture b2', 
+            visible=False
+        )
 
     traces = [top_aper_b1, bottom_aper_b1, top_aper_b2, bottom_aper_b2]
     visibility = np.array([True, True, False, False])
 
     return visibility, traces
 
-def add_velo(data: object) -> go.Scatter:
-    """
-    Add a VELO trace at the IP8 position.
-
-    Parameters:
-        data: An ApertureData object containing twiss data for beam 1.
-
-    Returns:
-        go.Scatter: A Plotly scatter trace representing the VELO.
-    """
-
-    # Find ip8 position
-    ip8 = data.tw_b1.loc[data.tw_b1['name'] == 'ip8', 's'].values[0]
-
-    # VELO position
-    x0=ip8-0.2
-    x1=ip8+0.8
-    y0=-0.05
-    y1=0.05
-
-    trace = go.Scatter(x=[x0, x0, x1, x1], y=[y0, y1, y1, y0], mode='lines', line=dict(color='orange'), name='VELO')
-
-    return trace
-
-def generate_2d_plot(element, beam, data, n, rtol=None, xtol=None, ytol=None, delta_beta=0, delta=0, delta_co=0, width=600, height=600):
+def generate_2d_plot(
+        element, beam, data, n, rtol=None, xtol=None, ytol=None, 
+        delta_beta=0, delta=0, delta_co=0, width=600, height=600):
     
     # Create the figure
     fig = go.Figure()
     
     if beam == 'both': 
-        traces_b1 = add_beam_trace(element, 'beam 1', data, n, rtol, xtol, ytol, delta_beta, delta, delta_co)
-        traces_b2 = add_beam_trace(element, 'beam 2', data, n, rtol, xtol, ytol, delta_beta, delta, delta_co)
+        traces_b1 = add_beam_trace(element, 'beam 1', data, n, 
+                                   rtol, xtol, ytol, 
+                                   delta_beta, delta, delta_co)
+        traces_b2 = add_beam_trace(element, 'beam 2', data, n, 
+                                   rtol, xtol, ytol, 
+                                   delta_beta, delta, delta_co)
         # Add scatter trace for beam center
         for i in traces_b1:
             fig.add_trace(i)
@@ -402,7 +507,9 @@ def generate_2d_plot(element, beam, data, n, rtol=None, xtol=None, ytol=None, de
             fig.add_trace(i)
 
     else:
-        traces = add_beam_trace(element, beam, data, n, rtol, xtol, ytol, delta_beta, delta, delta_co)
+        traces = add_beam_trace(element, beam, data, 
+                                n, rtol, xtol, ytol, 
+                                delta_beta, delta, delta_co)
         # Add scatter trace for beam center
         for i in traces:
             fig.add_trace(i)
@@ -419,27 +526,46 @@ def generate_2d_plot(element, beam, data, n, rtol=None, xtol=None, ytol=None, de
     )
     
     # Add gridlines for both axes
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', zeroline=True, zerolinewidth=1, zerolinecolor='lightgrey')
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', zeroline=True, zerolinewidth=1, zerolinecolor='lightgrey')
+    fig.update_xaxes(
+        showgrid=True, 
+        gridwidth=1, 
+        gridcolor='lightgrey', 
+        zeroline=True, 
+        zerolinewidth=1, 
+        zerolinecolor='lightgrey')
+    fig.update_yaxes(
+        showgrid=True, 
+        gridwidth=1, 
+        gridcolor='lightgrey', 
+        zeroline=True, 
+        zerolinewidth=1, 
+        zerolinecolor='lightgrey')
 
     return go.FigureWidget(fig)
 
-def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delta_beta=0, delta=0, delta_co=0):
+def add_beam_trace(
+        element, beam, data, n, 
+        rtol=None, xtol=None, ytol=None, 
+        delta_beta=0, delta=0, delta_co=0):
+    """Add the beam trace including envelope and aperture data."""
 
     # Merging and filtering logic for beam 1 and beam 2
     if beam == 'beam 1': 
         if hasattr(data, 'aper_b1'):
             twiss = data.tw_b1.reset_index(drop=True)
             merged = merge_twiss_and_aper(data.tw_b1, data.aper_b1)
-        else: merged = data.tw_b1.reset_index(drop=True)
+        else: 
+            merged = data.tw_b1.reset_index(drop=True)
         color = 'rgba(0,0,255,1)'
         color_fill = 'rgba(0,0,255,0.5)'
         color_fill_with_error = 'rgba(0,0,255,0.2)'
+        
     elif beam == 'beam 2': 
         if hasattr(data, 'aper_b2'):
             twiss = data.tw_b2.reset_index(drop=True) 
             merged = merge_twiss_and_aper(data.tw_b2, data.aper_b2)
-        else: merged = data.tw_b2.reset_index(drop=True) 
+        else: 
+            merged = data.tw_b2.reset_index(drop=True) 
         color = 'rgba(255,0,0,1)'
         color_fill = 'rgba(255,0,0,0.5)'
         color_fill_with_error = 'rgba(255,0,0,0.2)'
@@ -453,12 +579,13 @@ def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delt
             filtered_tw = twiss.iloc[(twiss['s'] - element_position).abs().idxmin()]
         else: filtered_tw = filtered_df.copy()
     except TypeError:
-        print_and_clear('Incorrect element')
+        print('Incorrect element')
         return go.Scatter(), go.Scatter(), go.Scatter()
 
     if delta or delta_beta:
 
-        sigmax_after_errors, sigmay_after_errors = data.calculate_sigma_with_error(filtered_df, delta_beta, delta) 
+        sigmax_after_errors, sigmay_after_errors = data.calculate_sigma_with_error(
+            filtered_df, delta_beta, delta) 
 
         # Extract rectangle coordinates
         x0 = filtered_tw['x'] - n * sigmax_after_errors
@@ -467,13 +594,17 @@ def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delt
         y1 = filtered_tw['y'] + n * sigmay_after_errors
         
         # Define the rectangle corners as a scatter trace
-        envelope_trace_with_error, outline_trace_after_errors = plot_2d_envelope(x0, x1, y0, y1, color_fill_with_error, 'Envelope including uncertainties')
+        envelope_trace_with_error, outline_trace_after_errors = plot_2d_envelope(
+            x0, x1, y0, y1, color_fill_with_error, 'Envelope including uncertainties')
     
     else: envelope_trace_with_error, outline_trace_after_errors = go.Scatter(), go.Scatter()
 
     if hasattr(data, 'aper_b1'):
         # Extract rectangle dimensions from APER_1 and APER_2
-        aper_1, aper_2, aper_3, aper_4 = filtered_df['APER_1'], filtered_df['APER_2'], filtered_df['APER_3'], filtered_df['APER_4']
+        aper_1 = filtered_df['APER_1']
+        aper_2 = filtered_df['APER_2']
+        aper_3 = filtered_df['APER_3']
+        aper_4 = filtered_df['APER_4']
 
         aperture_trace = plot_2d_aperture(aper_1, aper_2, aper_3, aper_4, 'Aperture')
 
@@ -500,11 +631,17 @@ def add_beam_trace(element, beam, data, n, rtol=None, xtol=None, ytol=None, delt
     # Check if at least one defined and if aperture loaded
     try:
         aperx_error, apery_error = data.calculate_aper_error(filtered_df, rtol, xtol, ytol, delta_co)
-        aperture_trace_with_error = plot_2d_aperture(aper_1-aperx_error, aper_2-apery_error, aper_3-aperx_error, aper_4-apery_error, 'Aperture including tolerances')
+        aperture_trace_with_error = plot_2d_aperture(
+            aper_1-aperx_error, aper_2-apery_error, aper_3-aperx_error, aper_4-apery_error, 
+            'Aperture including tolerances')
     except: 
         aperture_trace_with_error = go.Scatter()
 
-    return [beam_center_trace, envelope_trace, outline_trace, envelope_trace_with_error, outline_trace_after_errors, aperture_trace, aperture_trace_with_error]
+    return [
+        beam_center_trace, envelope_trace, outline_trace, 
+        envelope_trace_with_error, outline_trace_after_errors, 
+        aperture_trace, aperture_trace_with_error
+        ]
 
 def plot_2d_envelope(x0, x1, y0, y1, color, name): 
     # Create more points along each side of the envelope to enhance hover functionality
@@ -568,14 +705,16 @@ def plot_2d_aperture(aper_1, aper_2, aper_3, aper_4, name):
         x_new = np.append(x_new, x_new[0])
         y_new = np.append(y_new, y_new[0])
 
-        aperture_trace = go.Scatter(x=x_new, 
-                                        y=y_new, 
-                                        mode='lines',
-                                        name=name,
-                                        line=dict(color='grey', width=2))
+        aperture_trace = go.Scatter(
+            x=x_new, 
+            y=y_new, 
+            mode='lines',
+            name=name,
+            line=dict(color='grey', width=2)
+            )
 
     except: 
-        print_and_clear('oops')
+        print('oops')
 
         aper_x = aper_1
         aper_y = aper_2
@@ -583,13 +722,13 @@ def plot_2d_aperture(aper_1, aper_2, aper_3, aper_4, name):
         # Define the rectangle corners as a scatter trace
         aperture_trace = go.Scatter(
                 x=[-aper_x, aper_x, aper_x, -aper_x, -aper_x],  # Close the rectangle
-                y=[-aper_y, -aper_y, aper_y, aper_y, -aper_y],  # Close the rectangle
+                y=[-aper_y, -aper_y, aper_y, aper_y, -aper_y],
                 mode='lines',
                 name = name,
                 line=dict(color='grey', width=2),
                 fill='toself',  # To close the shape
                 fillcolor='rgba(0, 0, 0, 0)'  # No fill
-        )
+                )
 
     return aperture_trace
    
