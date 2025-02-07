@@ -1694,7 +1694,7 @@ class InteractiveTool():
     def define_widget_layout(self):
         """Define and arrange the layout of the widgets."""
         self.progress_label = Label(
-            value='',
+            value='Hello :)',
             width='100%',
             layout=widgets.Layout(justify_content='flex-start')
         )

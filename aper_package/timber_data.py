@@ -22,7 +22,8 @@ class BPMData:
         """
 
         # initialise the logging
-        self.ldb = pytimber.LoggingDB(spark_session=spark)
+        if isinstance(spark, str): self.ldb = pytimber.LoggingDB(source="nxcals")
+        else: self.ldb = pytimber.LoggingDB(spark_session=spark)
         self.label = label
     
     def print_to_label(self, string):
@@ -298,7 +299,8 @@ class CollimatorsData:
             yaml_path: Path to the YAML file containing collimator configurations.
         """
         # initialise the logging
-        self.ldb = pytimber.LoggingDB(spark_session=spark)
+        if isinstance(spark, str): self.ldb = pytimber.LoggingDB(source="nxcals")
+        else: self.ldb = pytimber.LoggingDB(spark_session=spark)
         self.yaml_path = yaml_path
         self.label = label
 
