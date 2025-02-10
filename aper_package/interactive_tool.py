@@ -1,12 +1,11 @@
-import numpy as np
 import os
-import pandas as pd
 import copy
-from datetime import datetime, date
-from typing import Optional, List, Tuple, Any
-
+import numpy as np
+import pandas as pd
 import warnings
-warnings.simplefilter(action='ignore', category=DeprecationWarning)
+
+from datetime import datetime, date
+from typing import Optional, Any
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -18,13 +17,16 @@ from aper_package.figure_data import *
 from aper_package.timber_data import *
 from aper_package.aperture_data import ApertureData
 
-class InteractiveTool():
-    
-    def __init__(self,
-                spark: Optional[Any] = None,
-                initial_path: Optional[str] = '/eos/project-c/collimation-team/machine_configurations/', 
-                angle_range = (-800, 800)):
-        
+warnings.simplefilter(action='ignore', category=DeprecationWarning)
+
+class InteractiveTool:
+
+    def __init__(
+        self,
+        spark: Optional[Any] = None,
+        initial_path: Optional[str] = "/eos/project-c/collimation-team/machine_configurations/",
+        angle_range=(-800, 800)
+    ):
         """Create and display an interactive plot with widgets for controlling and visualizing data.
 
         Parameters:
@@ -39,8 +41,9 @@ class InteractiveTool():
 
         # Initially, set the plot range from 0 to 26k
         self.plot_range = [0, 26_000]
-        # By default show horizontal plane first
-        self.plane = 'horizontal'
+        
+        # By default, show horizontal plane first
+        self.plane = "horizontal"
         
         self.initial_path = initial_path
         self.spark = spark
@@ -1693,8 +1696,9 @@ class InteractiveTool():
         
     def define_widget_layout(self):
         """Define and arrange the layout of the widgets."""
+
         self.progress_label = Label(
-            value='',
+            value='Hello :)',
             width='100%',
             layout=widgets.Layout(justify_content='flex-start')
         )
@@ -1713,33 +1717,33 @@ class InteractiveTool():
             spark_vbox = self.define_ls_tab()
 
             # Create an accordion to toggle visibility of controls
-            tab = Tab(
+            self.tab = Tab(
                 children=[
                     main_vbox, 
                     define_local_bump_box, 
                     bump_matching_box, 
-                    full_cross_section_box, 
+                  #  full_cross_section_box, 
                     spark_vbox
                     ]
                 )
-            tab.set_title(4, 'Timber data')
+            self.tab.set_title(4, 'Timber data')
 
         else: 
             self.collimator_data, self.BPM_data = None, None
-            tab = Tab(
+            self.tab = Tab(
                 children=[
                     main_vbox, 
                     define_local_bump_box, 
                     bump_matching_box, 
-                    full_cross_section_box
+               #     full_cross_section_box
                     ]
                 )
             
-        tab.set_title(0, 'Main')
-        tab.set_title(1, 'Define local bump')
-        tab.set_title(2, 'Match local bump')
-        tab.set_title(3, '2D view')
-        tab.layout.width = '100%'
+        self.tab.set_title(0, 'Main')
+        self.tab.set_title(1, 'Define local bump')
+        self.tab.set_title(2, 'Match local bump')
+        #self.tab.set_title(3, '2D view')
+        self.tab.layout.width = '100%'
 
         self.graph_container = HBox(
             layout=Layout(
@@ -1751,7 +1755,7 @@ class InteractiveTool():
                 )
             )
         
-        full_column = [tab, self.progress_label, self.graph_container]
+        full_column = [self.tab, self.progress_label, self.graph_container]
 
         # Combine both rows, knob box, and graph container into a VBox layout
         self.full_layout = VBox(

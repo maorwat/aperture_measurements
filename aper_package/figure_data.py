@@ -357,7 +357,7 @@ def plot_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.S
         name='Beam 2', 
         visible=False
         )
-    
+   
     return np.array([True, False]), [b1, b2]
 
 def plot_nominal_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter]]:
