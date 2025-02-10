@@ -1711,7 +1711,7 @@ class InteractiveTool:
         bump_matching_box = self.define_bump_matching_tab()
         
         # 2D view and error calculation tab
-        #full_cross_section_box = self.define_2d_view_tab()
+        full_cross_section_box = self.define_2d_view_tab()
         
         if self.spark: 
             spark_vbox = self.define_ls_tab()
@@ -1721,7 +1721,7 @@ class InteractiveTool:
                     main_vbox, 
                     define_local_bump_box, 
                     bump_matching_box,
-                    #full_cross_section_box,
+                    full_cross_section_box,
                     spark_vbox
                     ]
                 )
@@ -1734,13 +1734,13 @@ class InteractiveTool:
                     main_vbox, 
                     define_local_bump_box, 
                     bump_matching_box,
-                    #full_cross_section_box
+                    full_cross_section_box
                     ]
                 )
         self.tab.set_title(0, 'Main')
         self.tab.set_title(1, 'Define local bump')
         self.tab.set_title(2, 'Match local bump')
-        #self.tab.set_title(3, '2D view')
+        self.tab.set_title(3, '2D view')
         self.tab.layout.width = '100%'
 
         self.graph_container = HBox(
