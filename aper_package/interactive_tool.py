@@ -1701,45 +1701,45 @@ class InteractiveTool():
         
         # Main tab 
         main_vbox = self.define_main_tab()
-
+        
         # Local bump tab
         define_local_bump_box = self.define_local_bump_tab()
         bump_matching_box = self.define_bump_matching_tab()
         
         # 2D view and error calculation tab
-        full_cross_section_box = self.define_2d_view_tab()
+        #full_cross_section_box = self.define_2d_view_tab()
         
         if self.spark: 
             spark_vbox = self.define_ls_tab()
 
-            # Create an accordion to toggle visibility of controls
-            tab = Tab(
+            # Create a tab to toggle visibility of controls
+            self.tab = Tab(
                 children=[
                     main_vbox, 
                     define_local_bump_box, 
                     bump_matching_box, 
-                    full_cross_section_box, 
+                    #full_cross_section_box, 
                     spark_vbox
                     ]
                 )
-            tab.set_title(4, 'Timber data')
+            self.tab.set_title(4, 'Timber data')
 
         else: 
             self.collimator_data, self.BPM_data = None, None
-            tab = Tab(
+            self.tab = Tab(
                 children=[
                     main_vbox, 
                     define_local_bump_box, 
                     bump_matching_box, 
-                    full_cross_section_box
+                    #full_cross_section_box
                     ]
                 )
-            
-        tab.set_title(0, 'Main')
-        tab.set_title(1, 'Define local bump')
-        tab.set_title(2, 'Match local bump')
-        tab.set_title(3, '2D view')
-        tab.layout.width = '100%'
+          
+        self.tab.set_title(0, 'Main')
+        self.tab.set_title(1, 'Define local bump')
+        self.tab.set_title(2, 'Match local bump')
+        #self.tab.set_title(3, '2D view')
+        self.tab.layout.width = '100%'
 
         self.graph_container = HBox(
             layout=Layout(
@@ -1751,17 +1751,17 @@ class InteractiveTool():
                 )
             )
         
-        full_column = [tab, self.progress_label, self.graph_container]
+        full_column = [self.tab, self.progress_label, self.graph_container]
 
         # Combine both rows, knob box, and graph container into a VBox layout
         self.full_layout = VBox(
             full_column,
             layout=Layout(
-                align_items='flex-start',       # Center align all items vertically
-                width='100%',                   # Limit width to 80% of the page
-                margin='0 auto',                # Center the VBox horizontally
-                padding='20px',                 # Add p0dding around the whole container
-                border='solid 2px #ddd'         # Border around the VBox
+                align_items='flex-start',
+                width='100%',
+                margin='0 auto',
+                padding='20px',
+                border='solid 2px #ddd'
                 )
             )
 
@@ -2231,6 +2231,7 @@ class InteractiveTool():
 
         if hasattr(self, 'aperture_data'): 
             self.fig.update_layout(
+                hoverlabel_align = 'left',
                 updatemenus=[
                     dict(
                         type="buttons",

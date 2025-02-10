@@ -59,7 +59,7 @@ class BPMData:
             bpm_readings_v = bpm_positions_v['BFC.LHC:OrbitAcq:positionsV'][1][0] 
 
             # Ensure BPM names are in lowercase for merging with Twiss data later
-            bpm_names = np.char.lower(bpm_names_data['BFC.LHC:Mappings:fBPMNames_h'][1][0].astype(str))
+            bpm_names = np.char.lower(bpm_names_data['BFC.LHC:Mappings:fBPMNames_h'][1][0])
 
             # Create a DataFrame with the extracted data
             self.data = pd.DataFrame({
