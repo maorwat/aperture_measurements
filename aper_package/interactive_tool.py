@@ -1716,21 +1716,12 @@ class InteractiveTool:
         if self.spark: 
             spark_vbox = self.define_ls_tab()
 
-<<<<<<< HEAD
-            # Create an accordion to toggle visibility of controls
-=======
-            # Create a tab to toggle visibility of controls
->>>>>>> babed62f1fd7e84a04df0a261e02d50fd257dcb1
             self.tab = Tab(
                 children=[
                     main_vbox, 
                     define_local_bump_box, 
-                    bump_matching_box, 
-<<<<<<< HEAD
-                  #  full_cross_section_box, 
-=======
-                    #full_cross_section_box, 
->>>>>>> babed62f1fd7e84a04df0a261e02d50fd257dcb1
+                    bump_matching_box,
+                    #full_cross_section_box,
                     spark_vbox
                     ]
                 )
@@ -1742,18 +1733,10 @@ class InteractiveTool:
                 children=[
                     main_vbox, 
                     define_local_bump_box, 
-                    bump_matching_box, 
-<<<<<<< HEAD
-               #     full_cross_section_box
-                    ]
-                )
-            
-=======
+                    bump_matching_box,
                     #full_cross_section_box
                     ]
                 )
-          
->>>>>>> babed62f1fd7e84a04df0a261e02d50fd257dcb1
         self.tab.set_title(0, 'Main')
         self.tab.set_title(1, 'Define local bump')
         self.tab.set_title(2, 'Match local bump')
@@ -1880,7 +1863,8 @@ class InteractiveTool:
         Parameters:
             file_chooser: The file chooser widget used to select the file.
             expected_extension: The expected file extension (e.g., '.json', '.tfs').
-            path_replacement: Dictionary for path replacement (e.g., {'b1': 'b2'}). If None, no replacement is done.
+            path_replacement: Dictionary for path replacement (e.g., {'b1': 'b2'}). 
+                If None, no replacement is done.
             load_function: The function to call to load the data.
         """
         if not path:
@@ -1898,7 +1882,7 @@ class InteractiveTool:
             for old, new in path_replacement.items():
                 path_to_check = path_to_check.replace(old, new)
             if not os.path.exists(path_to_check):
-                self.progress_label.value = f"Path for the corresponding file doesn't exist."  # TODO: Add an option for path selection
+                self.progress_label.value = f"Path for the corresponding file doesn't exist."
                 return
 
         self.progress_label.value = f'Loading new {expected_extension[1:].upper()} data...'
