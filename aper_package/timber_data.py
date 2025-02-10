@@ -22,7 +22,8 @@ class BPMData:
         """
 
         # initialise the logging
-        self.ldb = pytimber.LoggingDB(spark_session=spark)
+        if isinstance(spark, str): self.ldb = pytimber.LoggingDB(source="nxcals")
+        else: self.ldb = pytimber.LoggingDB(spark_session=spark)
         self.label = label
     
     def print_to_label(self, string):
@@ -58,7 +59,7 @@ class BPMData:
             bpm_readings_v = bpm_positions_v['BFC.LHC:OrbitAcq:positionsV'][1][0] 
 
             # Ensure BPM names are in lowercase for merging with Twiss data later
-            bpm_names = np.char.lower(bpm_names_data['BFC.LHC:Mappings:fBPMNames_h'][1][0].astype(str))
+            bpm_names = np.char.lower(bpm_names_data['BFC.LHC:Mappings:fBPMNames_h'][1][0])
 
             # Create a DataFrame with the extracted data
             self.data = pd.DataFrame({
@@ -298,7 +299,8 @@ class CollimatorsData:
             yaml_path: Path to the YAML file containing collimator configurations.
         """
         # initialise the logging
-        self.ldb = pytimber.LoggingDB(spark_session=spark)
+        if isinstance(spark, str): self.ldb = pytimber.LoggingDB(source="nxcals")
+        else: self.ldb = pytimber.LoggingDB(spark_session=spark)
         self.yaml_path = yaml_path
         self.label = label
 

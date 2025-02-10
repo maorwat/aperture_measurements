@@ -278,16 +278,26 @@ def plot_envelopes(data: object, plane: str):
 
 def create_envelope(twiss_df, plane, beam, up_or_down, fill, visibility):
     # Define hover template with customdata
-    hover_template = (
-        "s: %{x:.2f} [m]<br>"
-        "x: %{y:.4f} [m]<br>"
-        "x: %{customdata[2]:.2f} [σ]<br>"
-        "element: %{text}<br>"
-        "distance from nominal: %{customdata[0]:.2f} [mm]<br>"
-        "distance from nominal: %{customdata[1]:.2f} [σ]"
-    )
-    
-    base_column = 'x' if plane == 'horizontal' else 'y'
+    if plane == 'horizontal':
+        base_column = 'x'
+        hover_template = (
+            "s: %{x:.2f} [m]<br>"
+            "x: %{y:.4f} [m]<br>"
+            "x: %{customdata[2]:.2f} [σ]<br>"
+            "element: %{text}<br>"
+            "distance from nominal: %{customdata[0]:.2f} [mm]<br>"
+            "distance from nominal: %{customdata[1]:.2f} [σ]"
+        )
+    else:
+        base_column = 'y'
+        hover_template = (
+            "s: %{x:.2f} [m]<br>"
+            "y: %{y:.4f} [m]<br>"
+            "y: %{customdata[2]:.2f} [σ]<br>"
+            "element: %{text}<br>"
+            "distance from nominal: %{customdata[0]:.2f} [mm]<br>"
+            "distance from nominal: %{customdata[1]:.2f} [σ]"
+        )
     
     position_column, sigma = f'{base_column}_{up_or_down}', f'sigma_{base_column}'
     
@@ -316,7 +326,7 @@ def create_envelope(twiss_df, plane, beam, up_or_down, fill, visibility):
         text=twiss_df.name, 
         name=name, 
         fill=fill, 
-        line=dict(color='rgba(0, 0, 0, 0)'),
+        line=dict(color=color),
         fillcolor=color,
         customdata=customdata, 
         hovertemplate=hover_template,
@@ -337,8 +347,27 @@ def plot_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.S
             A tuple containing the visibility array and a list of Plotly scatter traces.
     """
 
-    if plane == 'horizontal': y_b1, y_b2 = data.tw_b1.x, data.tw_b2.x
-    elif plane == 'vertical': y_b1, y_b2 = data.tw_b1.y, data.tw_b2.y
+    if plane == 'horizontal': 
+        y_b1, y_b2 = data.tw_b1.x, data.tw_b2.x
+        customdata_b1 = data.tw_b1.x / data.tw_b1.sigma_x
+        customdata_b2 = data.tw_b2.x / data.tw_b2.sigma_x
+        hover_template = (
+            "s: %{x:.2f} [m]<br>"
+            "x: %{y:.4f} [m]<br>"
+            "x: %{customdata:.2f} [σ]<br>"
+            "element: %{text}<br>"
+        )
+
+    elif plane == 'vertical': 
+        y_b1, y_b2 = data.tw_b1.y, data.tw_b2.y
+        customdata_b1 = data.tw_b1.y / data.tw_b1.sigma_y
+        customdata_b2 = data.tw_b2.y / data.tw_b2.sigma_y
+        hover_template = (
+            "s: %{x:.2f} [m]<br>"
+            "y: %{y:.4f} [m]<br>"
+            "y: %{customdata:.2f} [σ]<br>"
+            "element: %{text}<br>"
+        )
 
     b1 = go.Scatter(
         x=data.tw_b1.s, 
@@ -346,7 +375,9 @@ def plot_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.S
         mode='lines', 
         line=dict(color='blue'), 
         text = data.tw_b1.name, 
-        name='Beam 1'
+        name='Beam 1',
+        customdata=customdata_b1, 
+        hovertemplate=hover_template,
         )
     b2 = go.Scatter(
         x=data.tw_b2.s, 
@@ -355,7 +386,9 @@ def plot_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.S
         line=dict(color='red'), 
         text = data.tw_b2.name, 
         name='Beam 2', 
-        visible=False
+        visible=False,
+        customdata=customdata_b2, 
+        hovertemplate=hover_template,
         )
    
     return np.array([True, False]), [b1, b2]
