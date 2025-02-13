@@ -58,8 +58,11 @@ class BPMData:
             bpm_readings_h = bpm_positions_h['BFC.LHC:OrbitAcq:positionsH'][1][0]  
             bpm_readings_v = bpm_positions_v['BFC.LHC:OrbitAcq:positionsV'][1][0] 
 
-            # Ensure BPM names are in lowercase for merging with Twiss data later
-            bpm_names = np.char.lower(bpm_names_data['BFC.LHC:Mappings:fBPMNames_h'][1][0])
+            # Ensure BPM names are in strings and in lowercase for merging with Twiss data later
+            bpm_names = bpm_names_data['BFC.LHC:Mappings:fBPMNames_h'][1][0]
+            if not np.issubdtype(bpm_names.dtype, np.str_):
+                bpm_names = bpm_names.astype(str)
+            bpm_names = np.char.lower(bpm_names)
 
             # Create a DataFrame with the extracted data
             self.data = pd.DataFrame({
@@ -244,7 +247,6 @@ class BPMData:
             self, aper_data, s_range, 
             final_bump_container, bump_dict):
 
-        #TODO: make s_range optional
         initial_guess = []
         for bump_hbox in final_bump_container.children:
             bump_name = bump_hbox.children[0].value

@@ -168,11 +168,11 @@ class ApertureData:
         self.tw_b1 = self.tw_b1.copy()
         self.tw_b2 = self.tw_b2.copy()
 
-        self.tw_b1.loc[:, from_nom_to_top] = abs(self.tw_b1[up] - self.nom_b1[nom])*1000
-        self.tw_b1.loc[:, from_nom_to_bottom] = abs(self.tw_b1[down] - self.nom_b1[nom])*1000
+        self.tw_b1.loc[:, from_nom_to_top] = abs(self.tw_b1[up] - self.nom_b1[nom])
+        self.tw_b1.loc[:, from_nom_to_bottom] = abs(self.tw_b1[down] - self.nom_b1[nom])
 
-        self.tw_b2.loc[:, from_nom_to_top] = abs(self.tw_b2[up] - self.nom_b2[nom])*1000
-        self.tw_b2.loc[:, from_nom_to_bottom] = abs(self.tw_b2[down] - self.nom_b2[nom])*1000
+        self.tw_b2.loc[:, from_nom_to_top] = abs(self.tw_b2[up] - self.nom_b2[nom])
+        self.tw_b2.loc[:, from_nom_to_bottom] = abs(self.tw_b2[down] - self.nom_b2[nom])
 
     def _define_sigma(self) -> None:
         """Calculate and add sigma_x and sigma_y columns 

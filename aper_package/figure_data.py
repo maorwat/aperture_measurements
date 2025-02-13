@@ -25,8 +25,18 @@ def plot_BPM_data(
     # Select data based on plane
     if plane == 'horizontal': 
         y_b1, y_b2 = data.b1.x, data.b2.x
+        hover_template = (
+            "element: %{text}<br>"
+            "s: %{x:.2f} [m]<br>"
+            "x: %{y:.4f} [m]<br>"
+        )
     elif plane == 'vertical': 
         y_b1, y_b2 = data.b1.y, data.b2.y
+        hover_template = (
+            "element: %{text}<br>"
+            "s: %{x:.2f} [m]<br>"
+            "y: %{y:.4f} [m]<br>"
+        )
 
     # Make sure the units are in meters like twiss data
     b1 = go.Scatter(
@@ -35,7 +45,8 @@ def plot_BPM_data(
         mode='markers', 
         line=dict(color='blue'), 
         text = data.b1.name, 
-        name='BPM beam 1')
+        name='BPM beam 1',
+        hovertemplate=hover_template)
     
     b2 = go.Scatter(
         x=data.b2.s, 
@@ -44,7 +55,8 @@ def plot_BPM_data(
         line=dict(color='red'), 
         text = data.b2.name, 
         name='BPM beam 2', 
-        visible=False)
+        visible=False,
+        hovertemplate=hover_template)
     
     return np.array([True, False]), [b1, b2]
 
@@ -281,21 +293,21 @@ def create_envelope(twiss_df, plane, beam, up_or_down, fill, visibility):
     if plane == 'horizontal':
         base_column = 'x'
         hover_template = (
+            "element: %{text}<br>"
             "s: %{x:.2f} [m]<br>"
             "x: %{y:.4f} [m]<br>"
             "x: %{customdata[2]:.2f} [σ]<br>"
-            "element: %{text}<br>"
-            "distance from nominal: %{customdata[0]:.2f} [mm]<br>"
+            "distance from nominal: %{customdata[0]:.4f} [m]<br>"
             "distance from nominal: %{customdata[1]:.2f} [σ]"
         )
     else:
         base_column = 'y'
         hover_template = (
+            "element: %{text}<br>"
             "s: %{x:.2f} [m]<br>"
             "y: %{y:.4f} [m]<br>"
             "y: %{customdata[2]:.2f} [σ]<br>"
-            "element: %{text}<br>"
-            "distance from nominal: %{customdata[0]:.2f} [mm]<br>"
+            "distance from nominal: %{customdata[0]:.4f} [m]<br>"
             "distance from nominal: %{customdata[1]:.2f} [σ]"
         )
     
@@ -352,10 +364,10 @@ def plot_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.S
         customdata_b1 = data.tw_b1.x / data.tw_b1.sigma_x
         customdata_b2 = data.tw_b2.x / data.tw_b2.sigma_x
         hover_template = (
+            "element: %{text}<br>"
             "s: %{x:.2f} [m]<br>"
             "x: %{y:.4f} [m]<br>"
             "x: %{customdata:.2f} [σ]<br>"
-            "element: %{text}<br>"
         )
 
     elif plane == 'vertical': 
@@ -363,10 +375,10 @@ def plot_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, List[go.S
         customdata_b1 = data.tw_b1.y / data.tw_b1.sigma_y
         customdata_b2 = data.tw_b2.y / data.tw_b2.sigma_y
         hover_template = (
+            "element: %{text}<br>"
             "s: %{x:.2f} [m]<br>"
             "y: %{y:.4f} [m]<br>"
             "y: %{customdata:.2f} [σ]<br>"
-            "element: %{text}<br>"
         )
 
     b1 = go.Scatter(
@@ -404,9 +416,21 @@ def plot_nominal_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, L
         Tuple[np.ndarray, List[go.Scatter]]: 
             A tuple containing the visibility array and a list of Plotly scatter traces.
     """
+    if plane == 'horizontal': 
+        y_b1, y_b2 = data.nom_b1.x, data.nom_b2.x
+        hover_template = (
+            "element: %{text}<br>"
+            "s: %{x:.2f} [m]<br>"
+            "x: %{y:.4f} [m]<br>"  
+        )
 
-    if plane == 'horizontal': y_b1, y_b2 = data.nom_b1.x, data.nom_b2.x
-    elif plane == 'vertical': y_b1, y_b2 = data.nom_b1.y, data.nom_b2.y
+    elif plane == 'vertical': 
+        y_b1, y_b2 = data.nom_b1.y, data.nom_b2.y
+        hover_template = (
+            "element: %{text}<br>"
+            "s: %{x:.2f} [m]<br>"
+            "y: %{y:.4f} [m]<br>"
+        )
 
     b1 = go.Scatter(
         x=data.nom_b1.s, 
@@ -414,7 +438,8 @@ def plot_nominal_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, L
         mode='lines', 
         line=dict(color='blue', dash='dash'), 
         text = data.nom_b1.name, 
-        name='Nominal beam 1'
+        name='Nominal beam 1',
+        hovertemplate=hover_template
         )
     
     b2 = go.Scatter(
@@ -423,7 +448,8 @@ def plot_nominal_beam_positions(data: object, plane: str) -> Tuple[np.ndarray, L
         line=dict(color='red', dash='dash'), 
         text = data.nom_b2.name, 
         name='Nominal beam 2', 
-        visible=False
+        visible=False,
+        hovertemplate=hover_template
         )
     
     return np.array([True, False]), [b1, b2]
@@ -439,7 +465,12 @@ def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter
         Tuple[np.ndarray, List[go.Scatter]]: 
             A tuple containing the visibility array and a list of Plotly scatter traces.
     """
-
+    hover_template = (
+        "element: %{text}<br>"
+        "s: %{x:.2f} [m]<br>"
+        "aper: %{y:.4f} [m]<br>"
+        )
+    
     if plane == 'horizontal':
         # Aperture for beam 1 and beam 2 in horizontal plane
         top_aper_b1 = go.Scatter(
@@ -448,7 +479,8 @@ def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter
             mode='lines', 
             line=dict(color='gray'), 
             text=data.aper_b1.NAME, 
-            name='Aperture b1'
+            name='Aperture b1',
+            hovertemplate=hover_template
         )
         bottom_aper_b1 = go.Scatter(
             x=data.aper_b1.S, 
@@ -456,7 +488,8 @@ def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter
             mode='lines', 
             line=dict(color='gray'), 
             text=data.aper_b1.NAME, 
-            name='Aperture b1'
+            name='Aperture b1',
+            hovertemplate=hover_template
         )
         top_aper_b2 = go.Scatter(
             x=data.aper_b2.S, 
@@ -465,7 +498,8 @@ def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter
             line=dict(color='gray'), 
             text=data.aper_b2.NAME, 
             name='Aperture b2', 
-            visible=False
+            visible=False,
+            hovertemplate=hover_template
         )
         bottom_aper_b2 = go.Scatter(
             x=data.aper_b2.S, 
@@ -474,7 +508,8 @@ def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter
             line=dict(color='gray'), 
             text=data.aper_b2.NAME, 
             name='Aperture b2', 
-            visible=False
+            visible=False,
+            hovertemplate=hover_template
         )
 
     elif plane == 'vertical':
@@ -485,7 +520,8 @@ def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter
             mode='lines', 
             line=dict(color='gray'), 
             text=data.aper_b1.NAME, 
-            name='Aperture b1'
+            name='Aperture b1',
+            hovertemplate=hover_template
         )
         bottom_aper_b1 = go.Scatter(
             x=data.aper_b1.S, 
@@ -493,7 +529,8 @@ def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter
             mode='lines', 
             line=dict(color='gray'), 
             text=data.aper_b1.NAME, 
-            name='Aperture b1'
+            name='Aperture b1',
+            hovertemplate=hover_template
         )
         top_aper_b2 = go.Scatter(
             x=data.aper_b2.S, 
@@ -502,7 +539,8 @@ def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter
             line=dict(color='gray'), 
             text=data.aper_b2.NAME, 
             name='Aperture b2', 
-            visible=False
+            visible=False,
+            hovertemplate=hover_template
         )
         bottom_aper_b2 = go.Scatter(
             x=data.aper_b2.S, 
@@ -511,7 +549,8 @@ def plot_aperture(data: object, plane: str) -> Tuple[np.ndarray, List[go.Scatter
             line=dict(color='gray'), 
             text=data.aper_b2.NAME, 
             name='Aperture b2', 
-            visible=False
+            visible=False,
+            hovertemplate=hover_template
         )
 
     traces = [top_aper_b1, bottom_aper_b1, top_aper_b2, bottom_aper_b2]
