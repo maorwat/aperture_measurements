@@ -27,6 +27,9 @@ class ApertureData:
         # Define necessary variables
         self.emitt = emitt
         self.n = n
+
+        # Create a progress label
+        self.label = label
     
         # Load line data
         self.line_b1, self.line_b2 = self._load_lines_data(path_b1, path_b2)
@@ -35,8 +38,7 @@ class ApertureData:
         self.gamma = self.line_b1.particle_ref.to_pandas()['gamma0'][0]
         self.beta = self.line_b1.particle_ref.to_pandas()['beta0'][0]
         self.length = self.line_b1.get_length()
-        self.label = label
-
+        
         # Find knobs
         self._define_knobs()
         self._define_acb_knobs()
@@ -71,7 +73,12 @@ class ApertureData:
         # If path for beam 2 was not given, construct it by replacing b1 with b2
         if not path_b2: path_b2 = str(path_b1).replace('b1', 'b2')
 
-        return xt.Line.from_json(path_b1), xt.Line.from_json(path_b2)
+        self.print_to_label('Loading line for beam 1...')
+        line_b1 = xt.Line.from_json(path_b1)
+        self.print_to_label('Loading line for beam 2...')
+        line_b2 = xt.Line.from_json(path_b2)
+
+        return line_b1, line_b2
 
     def _define_knobs(self) -> None:
         """Identifie and store the knobs (parameters with 'on_' in their name) 

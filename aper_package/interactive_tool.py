@@ -90,11 +90,54 @@ class InteractiveTool:
             Label("Select Optics File:"), self.file_chooser_optics
         ])
 
+        help_icon = widgets.Button(
+            description="❓",
+            tooltip="Click for help"
+        )
+
+        # Help instructions
+        instructions = (
+            "<b>Line File:</b><br>"
+            "1. Select a JSON file from the xsuite folder (e.g. <code>LHC_run3/machine_configurations/2023_MD/xsuite</code>).<br>"
+            "   - Choose a file for Beam 1 (e.g. <code>flat_top_b1.json</code>). The path for Beam 2 will be auto-generated.<br>"
+            "   - This is the only required file.<br>"
+            "2. To modify knobs, use a JSON file with deferred expressions.<br><br>"
+
+            "<b>Aperture File:</b><br>"
+            "1. Select a TFS file from the MADX folder (e.g. <code>LHC_run3/machine_configurations/2023_MD/MADX/injection</code>).<br>"
+            "   - Choose a file for Beam 1 (e.g. <code>all_optics_B1.tfs</code>). The path for Beam 2 will be auto-generated.<br>"
+            "2. If you do not select this file, the aperture will not be visualized.<br><br>"
+
+            "<b>Optics File:</b><br>"
+            "1. Select a TFS file from the MADX_thick folder (e.g. <code>LHC_run3/machine_configurations/2023_MD/MADX_thick/injection</code>).<br>"
+            "2. If you do not select this file, the optics will not be visualized above the graph.<br><br>"
+
+            "<b>After Selecting All Files:</b><br>"
+            "- You can now adjust some graph properties and press the <b>'Apply Changes'</b> button.<br>"
+            "- Progress will be displayed just above the graph."
+        )
+
+        help_output = widgets.Output()
+
+        def toggle_help(change):
+            with help_output:
+                help_output.clear_output()  # Clear any previous output
+                if help_output.layout.display == "none":
+                    # Display instructions inside a box below the help button
+                    display(widgets.HTML(instructions))
+                    help_output.layout.display = "block"
+                else:
+                    help_output.layout.display = "none"
+
+        help_output.layout.display = "none"
+        help_icon.on_click(toggle_help)
+
         # Group together
         file_chooser_controls = [
             line_chooser_with_label, 
             aperture_chooser_with_label, 
-            optics_chooser_with_label
+            optics_chooser_with_label,
+            help_icon
         ]
 
         # Create layout for the first row of controls
@@ -108,8 +151,13 @@ class InteractiveTool:
                 border="solid 2px #ccc",
             ),
         )
+
+        layout_with_help = widgets.VBox([
+            file_chooser_layout,  # Your file chooser row
+            help_output  # Example of another widget inside HBox
+        ])
         
-        return file_chooser_layout
+        return layout_with_help
     
     def create_knob_controls(self):
         """Create the knob controls for the user interface. 
@@ -207,7 +255,7 @@ class InteractiveTool:
         remove_button = Button(
             description="Remove",
             style={"button_color": "rgb(249, 123, 114)"},
-            tooltip="Remove this knob from the list.",
+            tooltip="Remove this knob from the list of adjustable knobs.",
         )
 
         remove_button.on_click(lambda b, k=knob: self.on_remove_button_clicked(k))
@@ -297,7 +345,8 @@ class InteractiveTool:
         # Button to switch between horizontal and vertical planes
         self.apply_changes_button = Button(
             description="Apply changes", 
-            style=widgets.ButtonStyle(button_color='pink'))
+            style=widgets.ButtonStyle(button_color='pink'),
+            tooltip='Apply selected changes to the graph and line, including file selections and knob adjustments.')
         
         # Assign method to the button
         self.apply_changes_button.on_click(self.on_apply_changes_button_clicked)
@@ -339,19 +388,19 @@ class InteractiveTool:
         # Group main controls into a Vbox
         main_vbox = VBox(
             [
-            widgets.HTML("<h4>Select and load files</h4>"), 
-             file_chooser_layout,
-             widgets.HTML("<h4>Select and adjust knobs</h4>"), 
-             first_row_layout, 
-             self.knob_box, 
-             widgets.HTML("<h4>Change line and graph properties</h4>"), 
-             second_row_layout
-             ],
+            widgets.HTML("<h4>Select and load files</h4>"),
+            file_chooser_layout,
+            widgets.HTML("<h4>Select and adjust knobs</h4>"), 
+            first_row_layout, 
+            self.knob_box, 
+            widgets.HTML("<h4>Change line and graph properties</h4>"), 
+            second_row_layout
+            ],
             layout=Layout(
-                justify_content='space-around', # Distribute space evenly
-                width='100%',                   # Full width of the container
-                padding='10px',                 # Add padding around controls
-                border='solid 2px #ccc'       # Border around the HBox
+                justify_content='space-around',
+                width='100%',
+                padding='10px',
+                border='solid 2px #ccc'
                 )
             )
 
@@ -370,14 +419,16 @@ class InteractiveTool:
         # Button to define a new bump
         self.define_bump_button = Button(
             description="Define a new bump", 
-            style=widgets.ButtonStyle(button_color='pink'))
+            style=widgets.ButtonStyle(button_color='pink'),
+            tooltip='Define and configure a new bump using pre-calculated kicks.')
         # Assign a method
         self.define_bump_button.on_click(self.define_bump)
 
         # Button to remove al bumps
         self.remove_bumps_button = Button(
             description="Remove all bumps", 
-            style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)')
+            style=widgets.ButtonStyle(button_color='rgb(255, 242, 174)'),
+            tooltip='Remove all applied bumps, including those created via matching.'
             )
         #Assign a method
         self.remove_bumps_button.on_click(self.on_remove_bumps_button_clicked)
@@ -399,8 +450,9 @@ class InteractiveTool:
         # Dropdown to select the bump to which knobs will be added
         self.bump_selection_dropdown = Dropdown(
             options=[], 
-            description="Select Bump:", 
-            layout=widgets.Layout(width='200px')
+            description="Select a bump to assign orbit correctors:", 
+            layout=widgets.Layout(width='400px'),
+            style={'description_width': 'initial'}
             )
         
         # Dropdowns to sort correctors
@@ -647,13 +699,23 @@ class InteractiveTool:
             [], 
             layout=widgets.Layout(
                 grid_template_columns="repeat(4, 400px)", # 4 boxes each 400 px wide
-                width='100%'
+                width='100%',
+                padding='10px'
                 )
             ) 
 
         # Create the HBox for each bump (beam + knobs) 
-        bump_definition_vbox = widgets.HBox(
-            [beam_dropdown, knob_container], 
+        bump_definition_hbox = widgets.HBox(
+            [beam_dropdown, knob_container],
+            layout=widgets.Layout(
+                display='flex',  # Ensure horizontal layout
+                align_items='center',  # Align items in the center vertically within the HBox
+                width='100%'  # Ensure the width of HBox is 100%
+            )
+        )
+        bump_definition_vbox = widgets.VBox(
+            [widgets.HTML(f"<h4 style='margin: 0;'>Specify kick values for {bump_name}</h4>"),
+            bump_definition_hbox],
             layout=widgets.Layout(
                 width='100%', 
                 padding='10px', 
@@ -717,7 +779,6 @@ class InteractiveTool:
                 [float_input, remove_button], 
                 layout=widgets.Layout(
                     width='100%',
-                    padding='5px',
                     align_items='center'
                     )
                 )
@@ -801,13 +862,13 @@ class InteractiveTool:
                 first_row_box,
                 second_row_box,
                 self.main_bump_box,
-                widgets.HTML("<h4>Select bumps for final calculation</h4>"),
+                widgets.HTML("<h4>Select bumps to scale</h4>"),
                 third_row_box,
                 self.final_bump_container,
                 widgets.HTML("<h4>Perform least-squares fitting</h4>"),
                 fourth_row_box
                 ]
-
+        
         else:
             local_bump_controls = [
                 widgets.HTML("<h4>Define and configure bumps</h4>"),
@@ -1699,8 +1760,11 @@ class InteractiveTool:
 
         self.progress_label = Label(
             value='Hello :)',
-            width='100%',
-            layout=widgets.Layout(justify_content='flex-start')
+            style={'font_weight': 'bold', 'font_size': '15px'},
+            layout=widgets.Layout(
+                width='100%',
+                justify_content='flex-start'
+            )
         )
         
         # Main tab 
