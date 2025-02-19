@@ -91,15 +91,16 @@ class InteractiveTool:
         ])
 
         help_icon = widgets.Button(
-            description="❓",
-            tooltip="Click for help"
+            description="?",
+            tooltip="Click for help",
+            layout=widgets.Layout(width="30px", height="30px")
         )
 
         # Help instructions
         instructions = (
             "<b>Line File:</b><br>"
             "1. Select a JSON file from the xsuite folder (e.g. <code>LHC_run3/machine_configurations/2023_MD/xsuite</code>).<br>"
-            "   - Choose a file for Beam 1 (e.g. <code>flat_top_b1.json</code>). The path for Beam 2 will be auto-generated.<br>"
+            "   - Choose a file for Beam 1 (e.g. <code>flat_top_b1_defexp.json</code>). The path for Beam 2 will be auto-generated.<br>"
             "   - This is the only required file.<br>"
             "2. To modify knobs, use a JSON file with deferred expressions.<br><br>"
 
@@ -499,7 +500,8 @@ class InteractiveTool:
         self.add_bump_knob_button = Button(
             description="Add corrector", 
             layout=widgets.Layout(width='150px'), 
-            style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)')
+            style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'),
+            tooltip='Assign the selected corrector to the specified bump configuration'
             )
         # Assign a method
         self.add_bump_knob_button.on_click(self.add_knob)
@@ -534,15 +536,17 @@ class InteractiveTool:
         # Dropdown to select bump for final addition to the line and scaling
         self.final_bump_dropdown = Dropdown(
             options=[], 
-            description="Final Bump", 
-            layout=widgets.Layout(width='200px')
+            description="Bump to scale", 
+            layout=widgets.Layout(width='200px'),
+            style={'description_width': 'initial'}
             )
         
         # Button to add the selected bump to the final container
         self.add_final_bump_button = Button(
-            description="Add Bump", 
+            description="Add bump", 
             layout=widgets.Layout(width='150px'), 
-            style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)')
+            style=widgets.ButtonStyle(button_color='rgb(179, 222, 105)'),
+            tooltip="Add the configured bump to the list of the bumps to be scaled and applied to the line."
             )
         # Assign a method
         self.add_final_bump_button.on_click(self.add_final_bump)
@@ -551,7 +555,8 @@ class InteractiveTool:
         self.bump_apply_button = Button(
             description="Apply", 
             style=widgets.ButtonStyle(button_color='pink'), 
-            layout=widgets.Layout(width='150px')
+            layout=widgets.Layout(width='150px'),
+            tooltip='Apply all the bumps included below to the line.'
             )
         # Assign a method
         self.bump_apply_button.on_click(self.apply_operation)
@@ -560,7 +565,7 @@ class InteractiveTool:
         self.final_bump_container = widgets.GridBox(
             [], 
             layout=widgets.Layout(
-                grid_template_columns="repeat(4, 500px)", # 4 boxes each 500 px wide
+                grid_template_columns="repeat(4, 480px)", # 4 boxes each 500 px wide
                 width='100%'
                 )
             )
@@ -685,13 +690,14 @@ class InteractiveTool:
 
     def define_bump(self, b):
         """Define a new bump with kicks."""
-        bump_name = f"Bump {len(self.bump_dict) + 1}"  # Unique bump name
+        # Unique bump name
+        bump_name = f"Bump {len(self.bump_dict) + 1}"
+
         # Create a dropdown to specify to which beam the bump should be applied
         beam_dropdown = widgets.Dropdown(
             options=['beam 1', 'beam 2'], 
-            description=f'{bump_name}: Beam', 
-            layout=widgets.Layout(width='400px'), 
-            style={'description_width': '150px'}
+            description='Beam', 
+            layout=widgets.Layout(width='200px')
             )
 
         # Container for knobs in a grid
@@ -706,13 +712,14 @@ class InteractiveTool:
 
         # Create the HBox for each bump (beam + knobs) 
         bump_definition_hbox = widgets.HBox(
-            [beam_dropdown, knob_container],
+            [widgets.HTML(f"{bump_name}", layout=widgets.Layout(width="100px")), beam_dropdown, knob_container],
             layout=widgets.Layout(
                 display='flex',  # Ensure horizontal layout
                 align_items='center',  # Align items in the center vertically within the HBox
                 width='100%'  # Ensure the width of HBox is 100%
             )
         )
+
         bump_definition_vbox = widgets.VBox(
             [widgets.HTML(f"<h4 style='margin: 0;'>Specify kick values for {bump_name}</h4>"),
             bump_definition_hbox],
@@ -801,8 +808,9 @@ class InteractiveTool:
             ]:
             # Create a float input and a remove button
             float_input = widgets.FloatText(
-                description="Value", 
-                layout=widgets.Layout(width='200px')
+                description="Scaling multiplier", 
+                layout=widgets.Layout(width='200px'),
+                style={'description_width': 'initial'}
                 )
             remove_button = widgets.Button(
                 description="Remove", 
@@ -856,29 +864,23 @@ class InteractiveTool:
         """Group all the widgets for the local bump into one vbox."""
         first_row_box, second_row_box, third_row_box, fourth_row_box = self.create_local_bump_controls()
 
+        # Common controls
+        local_bump_controls = [
+            widgets.HTML("<h4>Define and configure bumps</h4>"),
+            first_row_box,
+            second_row_box,
+            self.main_bump_box,
+            widgets.HTML("<h4>Select bumps to scale</h4>"),
+            third_row_box,
+            self.final_bump_container
+        ]
+
+        # Add least-squares fitting section if spark is enabled
         if self.spark:
-            local_bump_controls = [
-                widgets.HTML("<h4>Define and configure bumps</h4>"),
-                first_row_box,
-                second_row_box,
-                self.main_bump_box,
-                widgets.HTML("<h4>Select bumps to scale</h4>"),
-                third_row_box,
-                self.final_bump_container,
+            local_bump_controls.extend([
                 widgets.HTML("<h4>Perform least-squares fitting</h4>"),
                 fourth_row_box
-                ]
-        
-        else:
-            local_bump_controls = [
-                widgets.HTML("<h4>Define and configure bumps</h4>"),
-                first_row_box,
-                second_row_box,
-                self.main_bump_box,
-                widgets.HTML("<h4>Select bumps for final calculation</h4>"),
-                third_row_box,
-                self.final_bump_container
-                ]
+            ])
 
         # Display the layout
         local_bump_box = widgets.VBox(
@@ -1329,11 +1331,10 @@ class InteractiveTool:
         # Switch to toggle between showing errors on the 2d view graph and not
         self.toggle_switch = widgets.ToggleButton(
             value=False,
-            description='Errors not shown',
+            description='Show errors',
             disabled=False,
             button_style='',
-            tooltip='Toggle me',
-            icon='times'
+            tooltip='Toggle me'
             )
         # Observe changes in the toggle button
         self.toggle_switch.observe(self.on_toggle_change, 'value')
@@ -1402,9 +1403,8 @@ class InteractiveTool:
     def on_toggle_change(self, change):
         """Update the toggle switch description and icon based on its state."""
         self.toggle_switch.description = (
-            "Errors shown" if self.toggle_switch.value else "Errors not shown"
+            "Hide errors" if self.toggle_switch.value else "Show errors"
         )
-        self.toggle_switch.icon = "check" if self.toggle_switch.value else "times"
 
     def calculate_n1_button_clicked(self, b):
         """Calculate the n1 values and display them 
@@ -1775,7 +1775,7 @@ class InteractiveTool:
         bump_matching_box = self.define_bump_matching_tab()
         
         # 2D view and error calculation tab
-        #full_cross_section_box = self.define_2d_view_tab()
+        full_cross_section_box = self.define_2d_view_tab()
         
         if self.spark: 
             spark_vbox = self.define_ls_tab()
@@ -1785,7 +1785,7 @@ class InteractiveTool:
                     main_vbox, 
                     define_local_bump_box, 
                     bump_matching_box,
-                    #full_cross_section_box,
+                    full_cross_section_box,
                     spark_vbox
                     ]
                 )
@@ -1798,13 +1798,13 @@ class InteractiveTool:
                     main_vbox, 
                     define_local_bump_box, 
                     bump_matching_box,
-                    #full_cross_section_box
+                    full_cross_section_box
                     ]
                 )
         self.tab.set_title(0, 'Main')
         self.tab.set_title(1, 'Define local bump')
         self.tab.set_title(2, 'Match local bump')
-        #self.tab.set_title(3, '2D view')
+        self.tab.set_title(3, '2D view')
         self.tab.layout.width = '100%'
 
         self.graph_container = HBox(
