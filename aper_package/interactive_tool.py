@@ -99,19 +99,19 @@ class InteractiveTool:
         # Help instructions
         instructions = (
             "<b>Line File:</b><br>"
-            "1. Select a JSON file from the xsuite folder (e.g. <code>LHC_run3/machine_configurations/2023_MD/xsuite</code>).<br>"
+            "Select a JSON file from the xsuite folder (e.g. <code>LHC_run3/machine_configurations/2023_MD/xsuite</code>).<br>"
             "   - Choose a file for Beam 1 (e.g. <code>flat_top_b1_defexp.json</code>). The path for Beam 2 will be auto-generated.<br>"
             "   - This is the only required file.<br>"
-            "2. To modify knobs, use a JSON file with deferred expressions.<br><br>"
+            "To modify knobs, use a JSON file with deferred expressions.<br><br>"
 
             "<b>Aperture File:</b><br>"
-            "1. Select a TFS file from the MADX folder (e.g. <code>LHC_run3/machine_configurations/2023_MD/MADX/injection</code>).<br>"
+            "Select a TFS file from the MADX folder (e.g. <code>LHC_run3/machine_configurations/2023_MD/MADX/injection</code>).<br>"
             "   - Choose a file for Beam 1 (e.g. <code>all_optics_B1.tfs</code>). The path for Beam 2 will be auto-generated.<br>"
-            "2. If you do not select this file, the aperture will not be visualized.<br><br>"
+            "   - If you do not select this file, the aperture will not be visualized.<br><br>"
 
             "<b>Optics File:</b><br>"
-            "1. Select a TFS file from the MADX_thick folder (e.g. <code>LHC_run3/machine_configurations/2023_MD/MADX_thick/injection</code>).<br>"
-            "2. If you do not select this file, the optics will not be visualized above the graph.<br><br>"
+            "Select a TFS file from the MADX_thick folder (e.g. <code>LHC_run3/machine_configurations/2023_MD/MADX_thick/injection</code>).<br>"
+            "   - If you do not select this file, the optics will not be visualized above the graph.<br><br>"
 
             "<b>After Selecting All Files:</b><br>"
             "- You can now adjust some graph properties and press the <b>'Apply Changes'</b> button.<br>"
