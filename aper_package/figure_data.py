@@ -619,7 +619,8 @@ def add_beam_trace(
         element, beam, data, n, 
         rtol=None, xtol=None, ytol=None, 
         delta_beta=0, delta=0, delta_co=0):
-    """Add the beam trace including envelope and aperture data."""
+    """Add the beam trace including envelope and aperture data
+    to the existing plot."""
 
     # Merging and filtering logic for beam 1 and beam 2
     if beam == 'beam 1': 
@@ -669,7 +670,8 @@ def add_beam_trace(
         envelope_trace_with_error, outline_trace_after_errors = plot_2d_envelope(
             x0, x1, y0, y1, color_fill_with_error, 'Envelope including uncertainties')
     
-    else: envelope_trace_with_error, outline_trace_after_errors = go.Scatter(), go.Scatter()
+    else: 
+        envelope_trace_with_error, outline_trace_after_errors = go.Scatter(), go.Scatter()
 
     if hasattr(data, 'aper_b1'):
         # Extract rectangle dimensions from APER_1 and APER_2
@@ -716,6 +718,7 @@ def add_beam_trace(
         ]
 
 def plot_2d_envelope(x0, x1, y0, y1, color, name): 
+    '''Create a trace for envelope in 2d'''
     # Create more points along each side of the envelope to enhance hover functionality
     x_side1 = np.linspace(x0, x1, 100)
     y_side1 = np.full_like(x_side1, y0)
@@ -743,26 +746,36 @@ def plot_2d_envelope(x0, x1, y0, y1, color, name):
         fillcolor=color  # Example fill color with some transparency
     )   
 
-    # Create a transparent outline for the envelope
+    hover_template = (
+            "x: %{x:.4f} [m]<br>"
+            "y: %{y:.4f} [m]<br>"  
+        )
+
+    # Create a transparent outline for the envelope for the hover to appear
     outline_trace = go.Scatter(
         x=x_envelope,
         y=y_envelope,
         mode='lines',
         name=name,
-        line=dict(color='rgba(0, 0, 0, 0.1)', width=2)
+        hovertemplate=hover_template,
+        line=dict(color='rgba(0, 0, 0, 0.1)', width=1)
     )
 
     return envelope_trace, outline_trace
 
-
 def plot_2d_aperture(aper_1, aper_2, aper_3, aper_4, name):
-
+    '''Create a trace for aperture in 2d'''
     t = np.linspace(0, 2*np.pi, 10000)
     
     x_rect = [-aper_1, aper_1, aper_1, -aper_1, -aper_1]
     y_rect = [-aper_2, -aper_2, aper_2, aper_2, -aper_2]
     x_elipse = aper_3*np.cos(t)
     y_elipse = aper_4*np.sin(t)
+
+    hover_template = (
+            "x: %{x:.4f} [m]<br>"
+            "y: %{y:.4f} [m]<br>"  
+        )
 
     try:
         indices = np.where(abs(y_elipse)>aper_2)
@@ -782,6 +795,7 @@ def plot_2d_aperture(aper_1, aper_2, aper_3, aper_4, name):
             y=y_new, 
             mode='lines',
             name=name,
+            hovertemplate=hover_template,
             line=dict(color='grey', width=2)
             )
 

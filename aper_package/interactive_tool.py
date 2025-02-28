@@ -672,7 +672,7 @@ class InteractiveTool:
 
     def on_remove_bumps_button_clicked(self, b):
         """
-        Handles event of clicking Remove all bumps button
+        Handle event of clicking Remove all bumps button
         """
         self.aperture_data.reset_all_acb_knobs()
         self.selected_mcbs_hbox.children = ()  # Clear the HBox
@@ -850,8 +850,8 @@ class InteractiveTool:
             bump_float_value = bump_hbox.children[1].value
 
             float_inputs = self.bump_dict[bump_name]['float_inputs']
-            selected_beam = self.bump_dict[bump_name]['vbox'].children[0].value  # Get the selected beam
-
+            selected_beam = self.bump_dict[bump_name]['vbox'].children[1].children[1].value
+            
             # Iterate over all knobs in the bump definition and scale them accordingly    
             for i in float_inputs:
                 self.aperture_data.change_acb_knob(i.description, i.value*bump_float_value*1e-6, selected_beam)
@@ -943,7 +943,8 @@ class InteractiveTool:
             )
         # Dropdown to sort mcbs by region
         self.sort_mcbs_regions_dropdown = Dropdown(
-            options=['l1','r1','l2','r2','l3','r3','l4','r4','l5','r5','l6','r6','l7','r7','l8','r8'], 
+            options=['l1','r1','l2','r2','l3','r3','l4','r4',
+                     'l5','r5','l6','r6','l7','r7','l8','r8'], 
             description="Region:", 
             layout=widgets.Layout(width='200px')
             )
@@ -1036,6 +1037,7 @@ class InteractiveTool:
                         max=20.0,
                         step=1,
                         description='Bump size range [mm]:',
+                        style={'description_width': 'initial'},
                         continuous_update=False,
                         layout=Layout(width='400px'),
                         readout_format='d'
@@ -1789,7 +1791,7 @@ class InteractiveTool:
                     spark_vbox
                     ]
                 )
-            self.tab.set_title(3, 'Timber data')
+            self.tab.set_title(4, 'Timber data')
 
         else: 
             self.collimator_data, self.BPM_data = None, None
@@ -1857,8 +1859,14 @@ class InteractiveTool:
                 selected_time.hour, selected_time.minute, selected_time.second
             )
 
+            # Convert to pandas datetime and localize to Zurich time
+            zurich_time = pd.Timestamp(combined_datetime, tz="Europe/Zurich")
+
+            # Convert to UTC
+            utc_time = zurich_time.tz_convert("UTC")
+
             # Load data using the provided loader
-            data_loader(combined_datetime)
+            data_loader(utc_time.to_pydatetime())
 
             # Check if the data meets the update condition and update the graph
             if update_condition():

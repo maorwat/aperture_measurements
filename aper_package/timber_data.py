@@ -211,7 +211,7 @@ class BPMData:
             bump_name = bump_hbox.children[0].value
 
             float_inputs = bump_dict[bump_name]['float_inputs']
-            selected_beam = bump_dict[bump_name]['vbox'].children[0].value
+            selected_beam = bump_dict[bump_name]['vbox'].children[1].children[1].value
 
             # Iterate over all knobs in the bump definition and scale them accordingly    
             for i in float_inputs:
