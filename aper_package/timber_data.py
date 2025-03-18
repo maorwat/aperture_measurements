@@ -11,25 +11,29 @@ from scipy.optimize import least_squares
 
 from aper_package.utils import shift_by
 
-class BPMData:
+class TimberData:
 
     def __init__(self, spark, label=None):
         """
-        Initializes the BPMData class.
+        Initializes the TimberData class.
 
         Parameters:
             spark: Spark session for accessing the LoggingDB.
         """
 
         # initialise the logging
-        if isinstance(spark, str): self.ldb = pytimber.LoggingDB(source="nxcals")
-        else: self.ldb = pytimber.LoggingDB(spark_session=spark)
+        if isinstance(spark, str): 
+            self.ldb = pytimber.LoggingDB(source="nxcals")
+        else: 
+            self.ldb = pytimber.LoggingDB(spark_session=spark)
         self.label = label
     
     def print_to_label(self, string):
         if self.label is not None:
             self.label.value = string
         else: print(string)
+
+class BPMData(TimberData):
 
     def load_data(self, t: datetime) -> None:
         """
@@ -288,23 +292,15 @@ class BPMData:
         
         return merged
 
-class CollimatorsData:
+class CollimatorsData(TimberData):
 
     def __init__(self, 
                  spark,
                  label=None,
                  yaml_path: Union[str, List[str]] = '/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
-        """Initialize the CollimatorsData class.
 
-        Parameters:
-            spark: Spark session for accessing the LoggingDB.
-            yaml_path: Path to the YAML file containing collimator configurations.
-        """
-        # initialise the logging
-        if isinstance(spark, str): self.ldb = pytimber.LoggingDB(source="nxcals")
-        else: self.ldb = pytimber.LoggingDB(spark_session=spark)
+        super().__init__(spark, label)
         self.yaml_path = yaml_path
-        self.label = label
 
     def load_data(self, t: datetime) -> None:
         """Load collimator data from the specified YAML file and Timber.
@@ -399,8 +395,3 @@ class CollimatorsData:
         col.loc[:, 'bottom_gap_col'] = -col['gap'] + col[position_key]
         
         return col
-    
-    def print_to_label(self, string):
-        if self.label is not None:
-            self.label.value = string
-        else: print(string)

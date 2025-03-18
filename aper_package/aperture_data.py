@@ -530,19 +530,21 @@ class ApertureData:
         `aper_b1` and `aper_b2` DataFrames.
         """
 
-        home_path = str(Path.cwd().parent)
-
-        tol_b1 = self._create_df_from_madx(
-            f"{home_path}/test_data/aper_tol_profiles-as-built.b1.madx"
-            )
-        tol_b2 = self._create_df_from_madx(
-            f"{home_path}/test_data/aper_tol_profiles-as-built.b2.madx"
-            )
-
-        # Merge with the existing aperture dataframe attribute
-        self.aper_b1 = pd.merge(tol_b1, self.aper_b1, on='NAME', how='right')
-        self.aper_b2 = pd.merge(tol_b2, self.aper_b2, on='NAME', how='right')
-
+        try:
+            home_path = str(Path.cwd().parent)
+    
+            tol_b1 = self._create_df_from_madx(
+                f"{home_path}/test_data/aper_tol_profiles-as-built.b1.madx"
+                )
+            tol_b2 = self._create_df_from_madx(
+                f"{home_path}/test_data/aper_tol_profiles-as-built.b2.madx"
+                )
+    
+            # Merge with the existing aperture dataframe attribute
+            self.aper_b1 = pd.merge(tol_b1, self.aper_b1, on='NAME', how='right')
+            self.aper_b2 = pd.merge(tol_b2, self.aper_b2, on='NAME', how='right')
+        except: return
+    
     def _create_df_from_madx(self, file_path):
         """Create a DataFrame with elements and 
         corresponding aperture tolerances from specified MAD-X file.
